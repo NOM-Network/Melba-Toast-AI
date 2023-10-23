@@ -1,0 +1,95 @@
+Documentation of melbaToast.py
+Functionality, return types and parameters are going to change in the coming days.
+
+Following prompt types are available:
+-Alpaca
+-Pygmalion
+-Pygmalion2
+-Zephyr
+-OpenHermes-Mistral
+
+def __init__(self, modelPath, systemPromptPath, databaseaPath)
+Parameters: 
+	modelPath: string
+	- Specifies where the .gguf model file is located. Must be a valid file
+	  path
+	systemPromptPath: string
+	- Specifies where the file containing all pre made system prompts is stored
+	  databasePath: string
+	- Specifies where the database file with Melbas previous conversations and
+	  memories is stored
+Functionality:
+	Initializes the general config class with default parameters that should
+	provide immediate usability for most uses cases.
+	Further sets the modelPath variable inside the configuration class equal
+	to parameter [modelPath].
+	At last the LLM itself is initialized with the initial configuration class
+	and the database is loaded into memory.
+Usage:
+	llm = Melba(modelPath, systemPromptPath, databasePath)
+
+
+
+def defaultConfig(self)
+Parameters: None
+Functionality:
+	Returns a default object of the LLMConfig class and applies parameters that
+	have proven to result in good responses.
+Usage:
+	cfg: LLMConfig = LLMUtils.LLMConfig()
+
+
+
+def getCurrentConfig(self)
+Parameters: None
+Functionality:
+	Returns the currently used LLMConfig object.
+Usage:
+	cfg: LLMConfig = Melba.getCurrentConfig()
+
+
+
+def updateLLMConfig(self, newConfig)
+Parameters: 
+	newConfig: LLMConfig
+	- Takes a LLMConfig class object as it's parameter
+Functionality:
+	Updates the parameters variable currently in use by the llm.
+Usage:
+	Melba.updateLLMConfig(LLMConfig)
+
+
+
+def updateMemory(self, person, newContent)
+Parameters:
+	person: string
+	- Used to query the database for a past conversation.
+	newContent: string
+	- New data
+Functionality:
+	Deletes whatever is saved under the [person] entry in the
+	database and replaces it with the new data.
+Usage:
+	Melba.updateMemory("placeholder", text)
+
+
+
+def getMelbaResponse(self, stream, sysPromptSetting, person)
+Parameters:
+	stream: bool
+	- Specifies whether to return the generated output as a generator
+	  object or a full string.
+	sysPromptSetting: signed int
+	- This parameter is used to detect what type of system prompt should
+	  be used, for example:
+		(0 = generic prompt, 1 = individual prompt...Not done yet)
+	person: string
+	- Can be any type of name, Twitch username, Discord username...
+
+Functionality:
+	Builds the final prompt by querying a database for past memories
+	of the person/viewer [person] should there be any, otherwise a generic
+	prompt type is used. Returns Melba's response as a string.
+	Note: Response streaming is disabled for now
+Usage:
+	response = Melba.getMelbaResponse(False, 0, "placeholder)
