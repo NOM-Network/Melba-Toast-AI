@@ -9,7 +9,7 @@ class LLMConfig:
         self.modelPath = None
         self.modelName = ""
         self.modelType = "" # remove
-        self.nOffloadLayer = 10
+        self.nOffloadLayer = -1
         self.mainGPU = 0
 
         self.newlineToken = '\n'

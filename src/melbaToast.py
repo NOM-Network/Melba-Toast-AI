@@ -31,8 +31,8 @@ class Melba:
         llmConfig.top_p = 0.50
         llmConfig.top_k = 20
         llmConfig.temperature = 0.80
-        llmConfig.nOffloadLayer = -1 # GPU offloading is broken at the moment, will fix ASAP
-        llmConfig.mainGPU = 1
+        llmConfig.nOffloadLayer = 500 # GPU offloading is broken at the moment, will fix ASAP
+        llmConfig.mainGPU = 0
         llmConfig.repeat_penalty = 1.2
 
         return llmConfig
@@ -43,23 +43,13 @@ class Melba:
     def updateLLMConfig(self, newConfig):
         cfg = json.loads(newConfig)
         newParm = self.getCurrentConfig()
+        attributes = ["n_keep", "n_predict", "tfs_z", "typical_p",
+                      "top_k", "top_p", "temperature", "mirostat",
+                      "mirostat_tau", "mirostat_eta", "repeat_last_n", "repeat_penalty",
+                      "frequency_penalty", "presence_penalty", "penalize_nl", "n_batch"]
 
-        newParm.n_keep = newConfig["n_keep"]
-        newParm.n_predict = newConfig["n_predict"]
-        newParm.tfs_z = newConfig["tfs_z"]
-        newParm.typical_p = newConfig["typical_p"]
-        newParm.top_k = newConfig["top_k"]
-        newParm.top_p = newConfig["top_p"]
-        newParm.temperature = newConfig["temperature"]
-        newParm.mirostat = newConfig["mirostat"]
-        newParm.mirostat_tau = newConfig["mirostat_tau"]
-        newParm.mirostat_eta = newConfig["mirostat_eta"]
-        newParm.repeat_last_n = newConfig["repeat_last_n"]
-        newParm.repeat_penalty = newConfig["repeat_penalty"]
-        newParm.frequency_penalty = newConfig["frequency_penalty"]
-        newParm.presence_penalty = newConfig["presence_penalty"]
-        newParm.penalize_nl = newConfig["penalize_nl"]
-        newParm.n_batch = newConfig["n_batch"]
+        for attribute in attributes:
+            setattr(newParm, attribute, cfg[attribute])
 
         self.llm.update(newParm)
 
@@ -133,8 +123,8 @@ class Melba:
 
         pastConversation = self.getPastMemories(keyword=person, setting='savedchat')
         newLines = pastConversation.count('\n')
-        if newLines >= 8:
-            new = '\n'.join(pastConversation.split('\n')[:4])
+        if newLines >= 16:
+            new = '\n'.join(pastConversation.split('\n')[4:])
             self.updateMemory(person=person, newContent=new)
             pastConversation = new
 
@@ -214,7 +204,7 @@ class Melba:
 
         response =  self.llm.tempGenerate()
 
-        self.updateMemory(person, (f"{self.getPastMemories(keyword=person, setting='savedchat')}\n" + self.convoStyle + response))
+        self.updateMemory(person, (self.getPastMemories(keyword=person, setting='savedchat') + self.convoStyle + response + '\n'))
         #self.updateMemory(person, (f"{self.getPastMemories(keyword=person, setting='savedchat')}\n" + "{person}: " + message + "\n{llmName}: " + response + '\n'))
         self.curEmotion = self.emotion(response)
 

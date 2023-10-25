@@ -51,22 +51,24 @@ class LlamaModel:
         self.parameters = parameters
         self.llama = Llama(model_path=parameters.modelPath,
                            main_gpu=parameters.mainGPU,
+                           n_gpu_layers=self.parameters.nOffloadLayer,
+                           n_ctx=1024,
                            seed=int(randint(0, int(time()))),
                            n_threads=16)
         self.loadPrompt(path=None, prompt="", type=self.parameters.modelType)
 
     def tempGenerate(self):
         res = str(self.llama(self.parameters.prompt, max_tokens=self.parameters.n_predict,
-                          mirostat_mode=2,
-                          presence_penalty=self.parameters.presence_penalty,
-                          frequency_penalty=self.parameters.frequency_penalty,
-                          mirostat_eta=self.parameters.mirostat_eta,
-                          mirostat_tau=self.parameters.mirostat_tau,
-                          repeat_penalty=self.parameters.repeat_penalty,
-                          temperature=self.parameters.temperature,
-                          top_k=self.parameters.top_k,
-                          top_p=self.parameters.top_p,
-                          stop=self.parameters.antiPrompt))
+                              mirostat_mode=2,
+                              presence_penalty=self.parameters.presence_penalty,
+                              frequency_penalty=self.parameters.frequency_penalty,
+                              mirostat_eta=self.parameters.mirostat_eta,
+                              mirostat_tau=self.parameters.mirostat_tau,
+                              repeat_penalty=self.parameters.repeat_penalty,
+                              temperature=self.parameters.temperature,
+                              top_k=self.parameters.top_k,
+                              top_p=self.parameters.top_p,
+                              stop=self.parameters.antiPrompt))
 
         textOutputStart = res.find("'text':") + 9
         textOutputEnd = res.find("index") - 4
