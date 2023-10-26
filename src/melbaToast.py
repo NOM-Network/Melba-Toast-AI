@@ -3,21 +3,20 @@ import memoryDB
 from nrclex import NRCLex
 import json
 
-# TODO: Take in JSON objects as function arguments
-# TODO: Handle system prompts inside the databank too
+# TODO: Handle system prompts inside the databank
 class Melba:
     def __init__(self, modelPath, systemPromptPath, databasePath, backupPath = None):
         self.llmConfig = self.defaultConfig()
+
         self.llmConfig.modelPath = modelPath
         self.systemPromptPath = systemPromptPath
         self.backupPath = backupPath
 
-        self.curPrompt = None
-        self.experimental = False
-
-        self.curEmotion = "neutral"
         self.memoryDB = memoryDB.MemoryDB(databasePath)
         self.llm = LLMCore.LlamaModel(self.llmConfig)
+        self.llm.loadPrompt(type=self.llmConfig.modelType)
+        self.curEmotion = "neutral"
+        self.curPrompt = ""
 
     def defaultConfig(self):
         llmConfig = LLMCore.defaultLlamactxParams()
@@ -25,20 +24,17 @@ class Melba:
         llmConfig.modelType = "OpenHermes-Mistral"
         llmConfig.antiPrompt.append("You:")
         llmConfig.antiPrompt.append("Melba:")
-        llmConfig.n_predict = 64
+        llmConfig.n_predict = 32
         llmConfig.mirostat = 2
         llmConfig.frequency_penalty = 8
-        llmConfig.top_p = 0.50
-        llmConfig.top_k = 20
+        llmConfig.top_p = 0.45
+        llmConfig.top_k = 25
         llmConfig.temperature = 0.80
-        llmConfig.nOffloadLayer = 500 # GPU offloading is broken at the moment, will fix ASAP
+        llmConfig.nOffloadLayer = 0
         llmConfig.mainGPU = 0
         llmConfig.repeat_penalty = 1.2
 
         return llmConfig
-
-    def getCurrentConfig(self):
-        return self.llmConfig
 
     def updateLLMConfig(self, newConfig):
         cfg = json.loads(newConfig)
@@ -53,99 +49,87 @@ class Melba:
 
         self.llm.update(newParm)
 
+    def getCurrentConfig(self):
+        return self.llmConfig
+
     # TODO: let this function also modify general memories
-    def updateMemory(self, person: str, newContent: str):
-        self.memoryDB.updateOrCreateDBEntry(type="savedchat", identifier=person, content=newContent)
+    def updateMemory(self, type: str, person: str, newContent: str):
+        self.memoryDB.updateOrCreateDBEntry(type=type, identifier=person, content=newContent)
 
-    # settings depend on the system prompts file
-    # 0 - Generic
-    # 1 - For Twitch chatter
-    # 2 - Individual (For collabs)
-    def getSystemPrompt(self, filepath: str, setting) -> str:
-        prompt = ""
-        counter = 0
+    # each memory access should have its own function for future updates
+    # this code isn't very dry ):
+    def getSavedChat(self, username: str):
+        response = self.memoryDB.metadataQueryDB(type="savedchat", identifier=username)
 
-        try:
-            with open(filepath) as file:
-                for line in file:
-                    if counter == setting:
-                        prompt += line
-                    if line.find('-=-') != -1: # -=- is used to seperate different system prompts
-                        counter += 1
-        except FileExistsError:
-            print("Invalid filepath")
+        if response == "":
+            print(f"melbaToast: No saved chat with username {username} found.")
+        else:
+            newLines = response.count('\n')
+            if newLines >= 12:
+                new = '\n'.join(response.split('\n')[:4])
+                self.updateMemory(type="savedchat", person=username, newContent=new)
+                response = new
+        return response
 
-        if prompt == "":
-            print(f"melbaToast: No system prompt with the setting {setting} found.")
-            return ""
+    def getSystemprompt(self, keyword: str):
+        response = self.memoryDB.metadataQueryDB(type="systemprompt", identifier=keyword)
 
-        print("melbaToast debug: Inside getSystemPrompt")
-        return prompt
+        if response == "":
+            print(f"melbaToast: No system prompt with keyword {keyword} found, loading generic.")
+            response = self.memoryDB.metadataQueryDB(type="systemprompt", identifier="generic")
+        return response
 
-    def getPastMemories(self, keyword: str, setting: str) -> str:
+    def getPersonalInformation(self, name: str):
+        response = self.memoryDB.metadataQueryDB(type="characterdata", identifier=name)
+
+        if response == "":
+            print(f"melbaToast: No personal information about {name} found.")
+        return response
+
+    # results are probably not very accurate and need to be improved
+    def getGeneralInformation(self, keyword: str):
+        response = self.memoryDB.vectorQueryDB(keyword)
+
+        if response == "":
+            print(f"melbaToast: No information about {keyword} was found.")
+        return response
+
+    def accessMemories(self, keyword: str, setting: str) -> str:
         print(f"melbaToast debug: Inside getPastMemories keyword: {keyword} setting: {setting}")
         res = -1
         if setting == "savedchat":
-            res = self.memoryDB.metadataQueryDB(type="savedchat", identifier=keyword)
-        elif setting == "personinformation":
-            res = self.memoryDB.metadataQueryDB(type="personinformation", identifier=keyword)
+            res = self.getSavedChat(username=keyword)
+        elif setting == "systemPrompt":
+            res = self.getSystemprompt(keyword=keyword)
+        elif setting == "characterdata":
+            res = self.getPersonalInformation(name=keyword)
         elif setting == "generalinformation":
-            res = self.memoryDB.vectorQueryDB(keyword)
+            res = self.getGeneralInformation(keyword=keyword)
         else:
             print(f"melbaTost: Setting {setting} not found.")
             res = ""
 
-        if res == -1:
-            print("melbaToast: Memory not found.")
-            res = ""
-
-
         return res
 
-    def structurePrompt(self, person: str, message: str, sysPromptSetting: int, sysPromptToken: str, sysPromptSplitter: str) -> str:
-        information = ""            # experimental information retrieval
-
-        if self.experimental:
-            words = []
-            temp = ""
-
-            for character in message:
-                if character == ' ' and temp != "":
-                    words.append(temp)
-                    temp = ""
-                else:
-                    temp += character
-
-            for word in words:
-                res = self.memoryDB.metadataQueryDB(type="infoaboutperson", identifier=word) # will be replaced with a vector db query
-                if res:
-                    information = res # experimental information retrieval
-
-        pastConversation = self.getPastMemories(keyword=person, setting='savedchat')
-        newLines = pastConversation.count('\n')
-        if newLines >= 16:
-            new = '\n'.join(pastConversation.split('\n')[4:])
-            self.updateMemory(person=person, newContent=new)
-            pastConversation = new
-
-        systemPrompt = self.getSystemPrompt(self.systemPromptPath, sysPromptSetting)
+    def structurePrompt(self, person: str, message: str, sysPromptSetting: str) -> str:
+        systemPrompt = self.accessMemories(keyword=sysPromptSetting, setting='systemPrompt')
+        characterInformation = self.accessMemories(keyword=person, setting="characterdata")
+        characterInformation = characterInformation if characterInformation != "" else '\n'
         #generalInformation = self.getPastMemories(keyword='twitchchatter', setting='generalinformation') # TODO: Make it happen
-        if self.llm.parameters.modelType == "OpenHermes-Mistral":
-            print("debug")
-            self.convoStyle = '\n' + self.llm.inputPrefix + "user\n{person}: " + message + self.llm.outputPrefix + '\n' + \
-                              self.llm.inputPrefix + "assistant\n"
-        else:
-            self.convoStyle = "{person}: " + message + "\n{llmName}: "
+        pastConversation = self.accessMemories(keyword=person, setting='savedchat')
 
-        finalPrompt = (f"{sysPromptToken}{systemPrompt}" +
-                       f"{self.getPastMemories(keyword=person, setting='personinformation')}" +
-                       ((f"{information}\n") if self.experimental else "") +
-                       #f"{generalInformation}\n" +                 # TODO: implement information retrieval
-                       f"{sysPromptSplitter}\n{pastConversation}" + # TODO: for certain keywords
-                          self.convoStyle)                               # TODO: Insert prefix for both user input and llm response
+        self.convoStyle = self.llm.promptTemplate()
+        self.convoStyle = self.convoStyle.replace("[inputName]", person).replace("[outputName]", self.llmConfig.modelName)
+        self.convoStyle = self.convoStyle.replace("[inputText]", message)
 
 
-        finalPrompt = finalPrompt.replace("{llmName}", "Melba").replace("{person}", person).replace("-=-", "") # this shouldn't even be needed in the first place
+
+        finalPrompt = (f"{self.llm.systemPromptPrefix}{systemPrompt}" +
+                       f"{characterInformation}" +
+                       f"{characterInformation}\n" +
+                       #f"{generalInformation}\n" +                               # TODO: implement information retrieval
+                       f"{self.llm.systemPromptSplitter}\n{pastConversation}\n" + # TODO: for certain keywords
+                          self.convoStyle)
 
         return finalPrompt
 
@@ -184,29 +168,26 @@ class Melba:
     def getEmotion(self):
         return self.curEmotion
 
-    # stream: If True, stream the response(Generator object)
-    # sysPromptSetting: 0 = generic, 1 = single person(viewer), 2 = individual person
-    # person: The name or username of the person which Melba is responding to
-    # message: Text which Melba will respond to
     def getMelbaResponse(self, message, sysPromptSetting, person, stream=False) -> str:
         self.curPrompt = self.structurePrompt(person,
                                               message,
-                                              sysPromptSetting,
-                                              self.llm.systemPromptPrefix,
-                                              self.llm.systemPromptSplitter)        # insert model specific tokens
+                                              sysPromptSetting)        # insert model specific tokens
         self.llm.loadPrompt(path=None, prompt=self.curPrompt, type="pygmalion")
+        if self.curPrompt == "":  # we shouldn't even get here
+            print("melbaToast: Something went wrong while constructing the prompt, please restart Melba.")
 
         # if stream: # streaming disabled for now
         #     for token in self.llm.response(prompt=self.curPrompt, stream=True):
         #         yield token
         # else:
-        print(f"\nmelbaToast: Current prompt is:\n{self.curPrompt}\n")
+        print(f"\nmelbaToast: Current prompt is:\n -[{self.curPrompt}]-\n")
 
-        response =  self.llm.tempGenerate()
+        response = self.llm.response(stream=False)
 
-        self.updateMemory(person, (self.getPastMemories(keyword=person, setting='savedchat') + self.convoStyle + response + '\n'))
-        #self.updateMemory(person, (f"{self.getPastMemories(keyword=person, setting='savedchat')}\n" + "{person}: " + message + "\n{llmName}: " + response + '\n'))
-        self.curEmotion = self.emotion(response)
+        self.updateMemory(type="savedchat", person=person,
+                          newContent=(f"{self.accessMemories(keyword=person, setting='savedchat')}\n"
+                                      + self.convoStyle + response + self.llm.inputPostfix)) # there is definitely a
+        self.curEmotion = self.emotion(response)                                            # more elegant solution
 
         return response
     # stream: Whether to return full response or stream the result
