@@ -18,7 +18,7 @@ class MemoryDB:
                                   metadatas=[{"type" : type, "identifier" : identifier}],
                                   documents=content)
 
-        print(f"MemoryDB: New entry with id '{self.chromaCollection.count()} has been created.\n")
+        print(f"MemoryDB: New entry with id '{self.chromaCollection.count()}' has been created.\n")
 
         return 0
 

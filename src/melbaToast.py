@@ -122,8 +122,6 @@ class Melba:
         self.convoStyle = self.convoStyle.replace("[inputName]", person).replace("[outputName]", self.llmConfig.modelName)
         self.convoStyle = self.convoStyle.replace("[inputText]", message)
 
-
-
         finalPrompt = (f"{self.llm.systemPromptPrefix}{systemPrompt}" +
                        f"{characterInformation}" +
                        f"{characterInformation}\n" +
@@ -131,6 +129,7 @@ class Melba:
                        f"{self.llm.systemPromptSplitter}\n{pastConversation}\n" + # TODO: for certain keywords
                           self.convoStyle)
 
+        finalPrompt = finalPrompt.replace("{llmName}", self.llmConfig.modelName)
         return finalPrompt
 
     def emotion(self, text):
