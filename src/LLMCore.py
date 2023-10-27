@@ -26,6 +26,7 @@ class LlamaModel:
         self.modelParams.n_gpu_layers = self.parameters.nOffloadLayer
         self.modelParams.main_gpu = self.parameters.mainGPU
         self.modelPath = self.parameters.modelPath
+        print(str(self.modelParams.n_gpu_layers) + " " + str(self.modelParams.main_gpu))
 
         if self.modelPath is not None:
             try:
@@ -39,11 +40,13 @@ class LlamaModel:
             self.context = llama_cpp.llama_new_context_with_model(self.model, self.ctxParams)
 
         self.n_ctx = llama_cpp.llama_n_ctx(self.context)
-        self.remainingTokens = self.parameters.n_predict
         self.nVocab = llama_cpp.llama_n_vocab(self.model) if self.model else self.warnAndExit("__init__",
                                                                                               "No model was found")
         self.nCtx = llama_cpp.llama_n_ctx(self.context) if self.context else self.warnAndExit("__init__",
                                                                                               "No context was found")
+        self._init()
+
+    def _init(self):
         self.pCandidatesData = np.array(
             [],
             dtype=np.dtype(
@@ -69,9 +72,7 @@ class LlamaModel:
         self.scores: npt.NDArray[np.single] = np.ndarray((self.nCtx, self.nVocab), dtype=np.single)
 
     def reset(self):
-        self.pastTokens = 0
-        self.inputIds: npt.NDArray[np.intc] = np.ndarray((self.nCtx,), dtype=np.intc)
-        self.scores: npt.NDArray[np.single] = np.ndarray((self.nCtx, self.nVocab), dtype=np.single)
+        self._init()
 
     def update(self, newParameters: LLMUtils.LLMConfig):
         self.parameters = newParameters
@@ -197,7 +198,6 @@ class LlamaModel:
                                                temp=self.parameters.temperature)
             id = llama_cpp.llama_sample_token(ctx=self.context,
                                               candidates=llama_cpp.ctypes.byref(candidates))
-        #print(id)
         return id
 
     def generateTokens(self, tokens: List[int]):
@@ -207,8 +207,7 @@ class LlamaModel:
             newToken = self.sampleTokenWithModel()
             tokensON = yield newToken
             tokens = [newToken]
-
-            print(tokensON)
+            print(f"LLMCore: generateTokens: new token: {newToken}")
             if tokensON:
                 tokens.extend(tokensON)
 
@@ -324,14 +323,14 @@ class LlamaModel:
             self.inputPrefix = "</s><|user|>"
             self.outputPrefix = "</s><|assistant|>"
         elif type.lower() == "openhermes-mistral":
-            self.systemPromptSplitter = ""
+            self.systemPromptSplitter = "<|im_end|>"
             self.systemPromptPrefix = "<|im_start|>system"
             self.inputPrefix = "<|im_start|>"
             self.inputPostfix = "<|im_end|>"
 
     def promptTemplate(self):
-        template = f"{self.inputPrefix}[inputName]:\n[inputText]{self.inputPostfix}\n"
-        template += f"{self.inputPrefix}[outputName]:\n"
+        template = f"{self.inputPrefix}[inputName]\n[inputText]{self.inputPostfix}\n"
+        template += f"{self.inputPrefix}[outputName]\n"
         return template
 
     def manipulatePrompt(self, new, setting):

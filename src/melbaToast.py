@@ -5,11 +5,10 @@ import json
 
 # TODO: Handle system prompts inside the databank
 class Melba:
-    def __init__(self, modelPath, systemPromptPath, databasePath, backupPath = None):
+    def __init__(self, modelPath, databasePath, backupPath = None):
         self.llmConfig = self.defaultConfig()
 
         self.llmConfig.modelPath = modelPath
-        self.systemPromptPath = systemPromptPath
         self.backupPath = backupPath
 
         self.memoryDB = memoryDB.MemoryDB(databasePath)
@@ -20,6 +19,7 @@ class Melba:
 
     def defaultConfig(self):
         llmConfig = LLMCore.defaultLlamactxParams()
+        llmConfig.n_keep = 512
         llmConfig.modelName = "Melba"
         llmConfig.modelType = "OpenHermes-Mistral"
         llmConfig.antiPrompt.append("You:")
@@ -27,10 +27,10 @@ class Melba:
         llmConfig.n_predict = 32
         llmConfig.mirostat = 2
         llmConfig.frequency_penalty = 8
-        llmConfig.top_p = 0.45
+        llmConfig.top_p = 0.60
         llmConfig.top_k = 25
-        llmConfig.temperature = 0.80
-        llmConfig.nOffloadLayer = 0
+        llmConfig.temperature = 0.50
+        llmConfig.nOffloadLayer = 100
         llmConfig.mainGPU = 0
         llmConfig.repeat_penalty = 1.2
 
@@ -66,7 +66,7 @@ class Melba:
         else:
             newLines = response.count('\n')
             if newLines >= 12:
-                new = '\n'.join(response.split('\n')[:4])
+                new = '\n'.join(response.split('\n')[4:])
                 self.updateMemory(type="savedchat", person=username, newContent=new)
                 response = new
         return response
@@ -114,7 +114,6 @@ class Melba:
     def structurePrompt(self, person: str, message: str, sysPromptSetting: str) -> str:
         systemPrompt = self.accessMemories(keyword=sysPromptSetting, setting='systemPrompt')
         characterInformation = self.accessMemories(keyword=person, setting="characterdata")
-        characterInformation = characterInformation if characterInformation != "" else '\n'
         #generalInformation = self.getPastMemories(keyword='twitchchatter', setting='generalinformation') # TODO: Make it happen
         pastConversation = self.accessMemories(keyword=person, setting='savedchat')
 
@@ -185,8 +184,9 @@ class Melba:
 
         self.updateMemory(type="savedchat", person=person,
                           newContent=(f"{self.accessMemories(keyword=person, setting='savedchat')}\n"
-                                      + self.convoStyle + response + self.llm.inputPostfix)) # there is definitely a
-        self.curEmotion = self.emotion(response)                                            # more elegant solution
+                                      + self.convoStyle + response + self.llm.inputPostfix))  # there is definitely a
+        self.llm.reset()  # needs to be improved                                              # more elegant solution
+        self.curEmotion = self.emotion(response)
 
         return response
     # stream: Whether to return full response or stream the result
