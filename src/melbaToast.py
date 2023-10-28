@@ -7,7 +7,7 @@ import json
 
 # TODO: Handle system prompts inside the databank
 class Melba:
-    def __init__(self, modelPath, databasePath, backupPath = None):
+    def __init__(self, modelPath: str, databasePath: str, logpath: str = None, backupPath: str = None):
         self.llmConfig = self.defaultConfig()
 
         self.llmConfig.modelPath = modelPath
@@ -18,11 +18,12 @@ class Melba:
         self.llm.loadPrompt(type=self.llmConfig.modelType)
         self.curEmotion = "neutral"
         self.curPrompt = ""
-        self.swearWords = ""
+        self.swearWords = []
 
     def defaultConfig(self):
         llmConfig = LLMCore.defaultLlamactxParams()
-        llmConfig.n_keep = 512
+        llmConfig.nCtx = 1024
+        llmConfig.n_keep = 1024
         llmConfig.modelName = "Melba"
         llmConfig.modelType = "OpenHermes-Mistral"
         llmConfig.antiPrompt.append("You:")
@@ -116,7 +117,7 @@ class Melba:
 
     def isSwearWord(self, word: str) -> bool:
         if self.swearWords == "":
-            self.swearWords = self.memoryDB.metadataQueryDB(type="swearwords", identifier="all")
+            self.swearWords = (self.memoryDB.metadataQueryDB(type="swearwords", identifier="all")).split()
             print("in swearwordinit")
         if word in self.swearWords:
             return True
@@ -193,6 +194,7 @@ class Melba:
         print(f"\nmelbaToast: Current prompt is:\n -[{self.curPrompt}]-\n")
 
         response = (self.llm.response(stream=False)).split()
+        #response = self.llm.response(stream=False)
 
         # filter
         actualResponse = ""

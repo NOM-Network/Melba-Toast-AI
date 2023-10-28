@@ -12,12 +12,12 @@ def defaultLlamactxParams():
 class LlamaModel:
     def __init__(self, parameters: LLMUtils.LLMConfig):
         self.parameters = parameters
-        self.threadCount = 16
+        self.threadCount = self.parameters.threads
         if self.threadCount < 6:
             print("Low thread count. Inference might be slow.")
 
         self.ctxParams = self.parameters.getCtxParms()
-        self.ctxParams.n_ctx = 512  # default
+        self.ctxParams.n_ctx = self.parameters.nCtx  # default
         self.ctxParams.n_threads = self.threadCount
         if self.ctxParams.seed <= 0:
             self.ctxParams.seed = int(randint(0, int(time())))
@@ -235,9 +235,10 @@ class LlamaModel:
         tokenizedPromptTokens: List[int] = (self.tokenizeFull(self.parameters.prompt) if self.parameters.prompt != ""
                                             else [llama_cpp.llama_token_bos(self.context)])
 
-        if len(tokenizedPromptTokens) >= llama_cpp.llama_n_ctx(self.context):
-            self.warnAndExit("generate", f"{tokenizedPromptTokens} tokens were requested to be processed, maximum is "
-                                         f"{llama_cpp.llama_n_ctx(self.context)}")
+        if len(tokenizedPromptTokens) >= self.parameters.nCtx:
+            print(f"{tokenizedPromptTokens} tokens were requested to be processed, maximum is "
+                  f"{llama_cpp.llama_n_ctx(self.context)}")
+            return ""
 
         llama_cpp.llama_reset_timings(self.context)
         if antiPrompts != []:

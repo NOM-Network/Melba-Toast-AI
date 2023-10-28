@@ -50,10 +50,10 @@ def initSwearWords(filePath: str, filePathExclusions: str = None):
     if filePathExclusions is not None:
         with open(filePathExclusions):
             for line in swearWords.readlines():
-                swearWordsFull.replace(line, "")
+                swearWordsFull = swearWordsFull.replace(line, "")
+    print(swearWordsFull)
     if swearWordsFull != "":
         memDB.newDBEntry(type="swearwords", identifier="all", content=swearWordsFull)
-
 
 
 initSysPrompts(filePath="memories/systemPrompts.txt")

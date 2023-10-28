@@ -15,7 +15,7 @@ class LLMConfig:
 
         self.nOffloadLayer = 0
         self.mainGPU = 0
-        self.threads = mp.cpu_count
+        self.threads = mp.cpu_count()
 
         self.newlineToken = '\n'
         self.EOT = '\n'
