@@ -329,8 +329,8 @@ class LlamaModel:
             self.inputPostfix = "<|im_end|>"
 
     def promptTemplate(self):
-        template = f"{self.inputPrefix}[inputName]\n[inputText]{self.inputPostfix}\n"
-        template += f"{self.inputPrefix}[outputName]\n"
+        template = f"{self.inputPrefix}[inputName]:\n[inputText]{self.inputPostfix}\n"
+        template += f"{self.inputPrefix}[outputName]:\n"
         return template
 
     def manipulatePrompt(self, new, setting):
