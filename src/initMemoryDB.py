@@ -1,9 +1,9 @@
 import memoryDB
 from typing import List
 
-memDB = memoryDB.MemoryDB(path="")
+memDB = memoryDB.MemoryDB(path="db")
 
-def initSysPrompts(filePath: str) -> bool:
+def initSysPrompts(filePath: str):
     systemPrompts: List[str] = []
     curPrompt = ""
 
@@ -20,9 +20,7 @@ def initSysPrompts(filePath: str) -> bool:
     for prompt in systemPrompts:
         memDB.newDBEntry(type="systemPrompt", identifier="generic", content=prompt)
 
-    return True
-
-def initCharacterMemory(filePath: str) -> bool:
+def initCharacterMemory(filePath: str):
     characterInformation: List[str] = []
     characterNames: List[str] = []
     curInformation = ""
@@ -46,12 +44,18 @@ def initCharacterMemory(filePath: str) -> bool:
         memDB.newDBEntry(type="characterinformation", identifier=name,
                          content=characterInformation[characterNames.index(name)])
 
-    return True
+def initSwearWords(filePath: str, filePathExclusions: str = None):
+    with open(filePath) as swearWords:
+        swearWordsFull = swearWords.read()
+    if filePathExclusions is not None:
+        with open(filePathExclusions):
+            for line in swearWords.readlines():
+                swearWordsFull.replace(line, "")
+    if swearWordsFull != "":
+        memDB.newDBEntry(type="swearwords", identifier="all", content=swearWordsFull)
 
-success = initSysPrompts(filePath="")
-success2 = initCharacterMemory(filePath="")
 
-if success and success2:
-    print("Initialized MemoryDB.")
-else:
-    print("Failed to initialize MemoryDB.")
+
+initSysPrompts(filePath="memories/systemPrompts.txt")
+initCharacterMemory(filePath="memories/characterInformation.txt")
+initSwearWords(filePath="memories/swearWords.txt")

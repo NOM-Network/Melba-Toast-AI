@@ -49,10 +49,8 @@ class MemoryDB:
 
     def updateOrCreateDBEntry(self, type: str, identifier: str, content: str):
         if self.entryExists(type=type, identifier=identifier):
-            print("test 1")
             self.updateDBEntry(type=type, identifier=identifier, content=content)
         else:
-            print("test 2")
             self.newDBEntry(type=type, identifier=identifier, content=content)
 
     def getId(self, type: str, identifier: str, content: str = None):

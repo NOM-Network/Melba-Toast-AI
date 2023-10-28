@@ -1,6 +1,8 @@
 import LLMCore
 import memoryDB
 from nrclex import NRCLex
+from datetime import datetime
+import time
 import json
 
 # TODO: Handle system prompts inside the databank
@@ -16,6 +18,7 @@ class Melba:
         self.llm.loadPrompt(type=self.llmConfig.modelType)
         self.curEmotion = "neutral"
         self.curPrompt = ""
+        self.swearWords = ""
 
     def defaultConfig(self):
         llmConfig = LLMCore.defaultLlamactxParams()
@@ -111,10 +114,19 @@ class Melba:
 
         return res
 
+    def isSwearWord(self, word: str) -> bool:
+        if self.swearWords == "":
+            self.swearWords = self.memoryDB.metadataQueryDB(type="swearwords", identifier="all")
+            print("in swearwordinit")
+        if word in self.swearWords:
+            return True
+        return False
+
     def structurePrompt(self, person: str, message: str, sysPromptSetting: str) -> str:
         systemPrompt = self.accessMemories(keyword=sysPromptSetting, setting='systemPrompt')
         characterInformation = self.accessMemories(keyword=person, setting="characterdata")
-        #generalInformation = self.getPastMemories(keyword='twitchchatter', setting='generalinformation') # TODO: Make it happen
+        generalInformation = f"The current data is {datetime.today().strftime('%Y-%m-%d')}\n" \
+                             f"The current time is {time.strftime('%H:%M:%S', time.localtime())}" # TODO: Make it happen
         pastConversation = self.accessMemories(keyword=person, setting='savedchat')
 
         self.convoStyle = self.llm.promptTemplate()
@@ -124,7 +136,7 @@ class Melba:
         finalPrompt = (f"{self.llm.systemPromptPrefix}{systemPrompt}" +
                        f"{characterInformation}" +
                        f"{characterInformation}\n" +
-                       #f"{generalInformation}\n" +                               # TODO: implement information retrieval
+                       f"{generalInformation}\n" +                               # TODO: implement information retrieval
                        f"{self.llm.systemPromptSplitter}\n{pastConversation}\n" + # TODO: for certain keywords
                           self.convoStyle)
 
@@ -152,7 +164,7 @@ class Melba:
         elif 'positive' or 'joy' in currentEmotions:
             return "happy"
         elif 'anger' or 'negative' in currentEmotions:
-            return 'angerd'
+            return 'angered'
         elif 'sadness' or 'negative' in currentEmotions:
             return 'sad'
         elif 'trust' in currentEmotions:
@@ -170,7 +182,7 @@ class Melba:
         self.curPrompt = self.structurePrompt(person,
                                               message,
                                               sysPromptSetting)        # insert model specific tokens
-        self.llm.loadPrompt(path=None, prompt=self.curPrompt, type="pygmalion")
+        self.llm.loadPrompt(path=None, prompt=self.curPrompt, type="openhermes-mistral")
         if self.curPrompt == "":  # we shouldn't even get here
             print("melbaToast: Something went wrong while constructing the prompt, please restart Melba.")
 
@@ -180,15 +192,23 @@ class Melba:
         # else:
         print(f"\nmelbaToast: Current prompt is:\n -[{self.curPrompt}]-\n")
 
-        response = self.llm.response(stream=False)
+        response = (self.llm.response(stream=False)).split()
+
+        # filter
+        actualResponse = ""
+        for word in response:
+            if self.isSwearWord(word=word):
+                actualResponse += " [TOASTED]"
+            else:
+                actualResponse += ' ' + word
 
         self.updateMemory(type="savedchat", person=person,
                           newContent=(f"{self.accessMemories(keyword=person, setting='savedchat')}\n"
-                                      + self.convoStyle + response + self.llm.inputPostfix))  # there is definitely a
-        self.llm.reset()  # needs to be improved                                              # more elegant solution
-        self.curEmotion = self.emotion(response)
+                                      + self.convoStyle + actualResponse + self.llm.inputPostfix))
+        self.llm.reset()  # needs to be improved
+        self.curEmotion = self.emotion(actualResponse)
 
-        return response
+        return actualResponse
     # stream: Whether to return full response or stream the result
     def regenerateResponse(self, stream=False):
         if stream:
