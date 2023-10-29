@@ -12,6 +12,7 @@ class Melba:
 
         self.llmConfig.modelPath = modelPath
         self.backupPath = backupPath
+        self.logPath = logpath
 
         self.memoryDB = memoryDB.MemoryDB(databasePath)
         self.llm = LLMCore.LlamaModel(self.llmConfig)
@@ -19,6 +20,7 @@ class Melba:
         self.curEmotion = "neutral"
         self.curPrompt = ""
         self.swearWords = []
+        self.log(message="Initalized Melba.")
 
     def defaultConfig(self):
         llmConfig = LLMCore.defaultLlamactxParams()
@@ -59,6 +61,7 @@ class Melba:
     # TODO: let this function also modify general memories
     def updateMemory(self, type: str, person: str, newContent: str):
         self.memoryDB.updateOrCreateDBEntry(type=type, identifier=person, content=newContent)
+        self.log(message=f"Updated memory entry of type '{type}' with identifier '{person}' and content '{newContent}'")
 
     # each memory access should have its own function for future updates
     # this code isn't very dry ):
@@ -209,7 +212,8 @@ class Melba:
                                       + self.convoStyle + actualResponse + self.llm.inputPostfix))
         self.llm.reset()  # needs to be improved
         self.curEmotion = self.emotion(actualResponse)
-
+        self.log(message=f"User: '{person}' \tMessage: '{message}' \tMelba response: '{actualResponse}' \tEmotion: "
+                         f"'{self.curEmotion}'")
         return actualResponse
     # stream: Whether to return full response or stream the result
     def regenerateResponse(self, stream=False):
@@ -218,6 +222,20 @@ class Melba:
                 yield token
         else:
             return self.llm.response()
+
+    def wipeDB(self):
+        print("melbaToast: This action will completely wipe the MemoryDB, are you sure you want to continue?y/n")
+        choice = input()
+        if choice == 'y':
+            self.memoryDB.chromaClient.reset()
+
+    def log(self, message: str):
+        if self.logPath is not None:
+            try:
+                with open(self.logPath, mode="a") as file:
+                    file.write(f"\n[{datetime.utcnow().strftime('%y-%m-d %H:%M:%S')}]-[{message}]")
+            except:
+                FileExistsError
 
     def end(self):
         if self.backupPath is not None:
