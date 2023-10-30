@@ -16,11 +16,20 @@ class Melba:
 
         self.memoryDB = memoryDB.MemoryDB(databasePath)
         self.llm = LLMCore.LlamaModel(self.llmConfig)
+        self.backup = False
         self.llm.loadPrompt(type=self.llmConfig.modelType)
         self.curEmotion = "neutral"
         self.curPrompt = ""
         self.swearWords = []
-        self.log(message="Initalized Melba.")
+        self.log(message="Initialized Melba.")
+
+    def setBackup(self, mode: bool):
+        if mode == True and self.backup == False:
+            self.llm.exit()
+            self.llm = LLMCore.LlamaOrig(self.llmConfig)
+            self.llm.loadPrompt(type=self.llmConfig.modelType)
+        elif mode == False and self.backup == True:
+            self.llm = LLMCore.LlamaModel(self.llmConfig)
 
     def defaultConfig(self):
         llmConfig = LLMCore.defaultLlamactxParams()

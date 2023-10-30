@@ -1,5 +1,6 @@
 import LLMUtils
 import llama_cpp
+from llama_cpp import Llama
 import numpy as np
 import numpy.typing as npt
 from typing import List
@@ -81,7 +82,7 @@ class LlamaModel:
     def warnAndExit(self, function, errorMessage):
         raise RuntimeError(f"LLMCore: Error in function: '{function}'. Following error message was provided: '{errorMessage}'\n")
 
-    def tokenizeFull(self, input: str, bos: bool = False) -> List[int]:   # Possibly further abstract by adding single
+    def tokenizeFull(self, input: str, bos: bool = True) -> List[int]:   # Possibly further abstract by adding single
         tokens = (llama_cpp.llama_token * self.nCtx)()              # token, tokenization
         newTokens = llama_cpp.llama_tokenize(model=self.model,
                                              text=input.encode("utf-8"),
@@ -254,11 +255,13 @@ class LlamaModel:
 
             tokens.append(t)
             tempBytes += self.tokenToByte(token=tokens[-1])
+            print(tempBytes.decode("utf8", errors="ignore"))
 
             for k, char in enumerate(tempBytes[-3:]):
                 k = 3 - k
                 for number, pattern in [(2, 192), (3, 224), (4, 240)]:
                     if number > k and pattern & char == pattern:
+                        print(str(number) + " " + str(pattern))
                         incompleteFix = number - k
 
             if incompleteFix > 0:
@@ -278,7 +281,7 @@ class LlamaModel:
                 break
 
         llama_cpp.llama_print_timings(self.context)
-        return finalString
+        return finalString if finalString != "" else tempBytes.decode("utf-8", errors="ignore")
 
     def response(self, stream: bool = False) -> str:    # streaming disabled for now
         if not stream:
@@ -344,3 +347,83 @@ class LlamaModel:
     def exit(self):
         llama_cpp.llama_print_timings(self.context)
         llama_cpp.llama_free(self.context)
+
+class LlamaOrig:
+    def __init__(self, params):
+        self.parameters = params
+        self.llama = Llama(model_path=self.parameters.modelPath,
+                           main_gpu=self.parameters.mainGPU,
+                           n_gpu_layers=-1,
+                           n_ctx=1024,
+                           seed=int(randint(0, int(time()))),
+                           n_threads=16)
+
+    def response(self, stream=False): # placeholder argument
+        res = str(self.llama(self.parameters.prompt, max_tokens=self.parameters.n_predict,
+                              mirostat_mode=2,
+                              presence_penalty=self.parameters.presence_penalty,
+                              frequency_penalty=self.parameters.frequency_penalty,
+                              mirostat_eta=self.parameters.mirostat_eta,
+                              mirostat_tau=self.parameters.mirostat_tau,
+                              repeat_penalty=self.parameters.repeat_penalty,
+                              temperature=self.parameters.temperature,
+                              top_k=self.parameters.top_k,
+                              top_p=self.parameters.top_p,
+                              stop=self.parameters.antiPrompt))
+
+        textOutputStart = res.find("'text':") + 9
+        textOutputEnd = res.find("index") - 4
+        textOutput = res[textOutputStart:textOutputEnd]
+        print(textOutput)
+        return textOutput
+
+    def loadPrompt(self, path: str = None, prompt: str = None, type: str = None):
+        supportedPromptTypes = ['alpaca', 'pygmalion', 'pygmalion2', 'zephyr', 'openhermes-mistral']
+
+        if path is not None:
+            with open(path) as f:
+                self.parameters.prompt = (" " + (f.read()).replace("{llmName}", self.parameters.modelName))
+                self.parameters.prompt.replace("\\n", '\n')
+
+            if type.lower() not in supportedPromptTypes:
+                print(f"Prompt type not supported. Prompt type: {type.lower()}")
+                self.global_go = False
+                pass
+        elif prompt is not None:
+            self.parameters.prompt = prompt
+        else:
+            print("LLMCore: No prompt loaded.")
+
+        #TODO: fix prompt types, currently mistral has the sole working prompt style
+        if type.lower() == "alpaca":
+            self.systemPromptPrefix = ""
+            self.inputPrefix = "### Instruction:"
+            self.outputPrefix = "### Response:"
+        elif type.lower() == "pygmalion":
+            self.systemPromptPrefix = "{llmName}}'s Persona:"
+            self.systemPromptSplitter = "<START>"
+            self.inputPrefix = "You:"
+            self.outputPrefix = ('[' + self.parameters.modelName + ']' + ':' + ' ')
+            self.parameters.prompt.replace("PYGMALION", " ")
+        elif type.lower() == "pygmalion2":
+            self.systemPromptPrefix = ""
+            self.inputPrefix = "<|user|>"
+            self.outputPrefix = "<|model|>"
+            self.parameters.prompt.replace("PYGMALION2", "")
+        elif type.lower() == "zephyr":
+            self.systemPromptPrefix = ""
+            self.inputPrefix = "</s><|user|>"
+            self.outputPrefix = "</s><|assistant|>"
+        elif type.lower() == "openhermes-mistral":
+            self.systemPromptSplitter = "<|im_end|>"
+            self.systemPromptPrefix = "<|im_start|>system"
+            self.inputPrefix = "<|im_start|>"
+            self.inputPostfix = "<|im_end|>"
+
+    def promptTemplate(self):
+        template = f"{self.inputPrefix}[inputName]:\n[inputText]{self.inputPostfix}\n"
+        template += f"{self.inputPrefix}[outputName]:\n"
+        return template
+
+    def reset(self):
+        pass # placeholder
