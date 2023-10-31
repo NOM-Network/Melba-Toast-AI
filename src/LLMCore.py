@@ -82,20 +82,20 @@ class LlamaModel:
     def warnAndExit(self, function, errorMessage):
         raise RuntimeError(f"LLMCore: Error in function: '{function}'. Following error message was provided: '{errorMessage}'\n")
 
-    def tokenizeFull(self, input: str, bos: bool = True) -> List[int]:   # Possibly further abstract by adding single
+    def tokenizeFull(self, input: str, bos: bool = False) -> List[int]:   # Possibly further abstract by adding single
         tokens = (llama_cpp.llama_token * self.nCtx)()              # token, tokenization
         newTokens = llama_cpp.llama_tokenize(model=self.model,
-                                             text=input.encode("utf-8"),
-                                             text_len=len(input),
+                                             text=input.encode("utf8"),
+                                             text_len=len(input.encode("utf8")),
                                              tokens=tokens,
                                              n_max_tokens=self.nCtx,
                                              add_bos=bos)
-
+        #print(len(input.encode("utf8")))
         print(f"LLMCore: {newTokens} token(s) were tokenized.")
         return list(tokens[:newTokens])
 
     def evaluate(self, tokens: List[int], batch: int):
-        if batch > 1:
+        if batch > 0:
             for i in range(0, len(tokens), batch):
                 nBatch = tokens[i : min(len(tokens), i + batch)]
                 nPast = min(self.nCtx - len(nBatch), len(self.inputIds[: self.pastTokens]))
@@ -116,17 +116,17 @@ class LlamaModel:
                 offset = (0 if self.parameters.logitsAll else nTokens-1)
                 self.scores[self.pastTokens+offset:self.pastTokens+nTokens, :].reshape(-1)[:] \
                     = llama_cpp.llama_get_logits(self.context)[: rows * cols]
-
+                #print(f"pastTokens: {self.pastTokens} Tokens: {self.inputIds[self.pastTokens : self.pastTokens + nTokens]} String: {self.tokensToString(self.inputIds[self.pastTokens : self.pastTokens + nTokens])}") useful for debugging
                 self.pastTokens += nTokens
 
     def sampleTokenWithModel(self):
         lastNTokensSize = self.parameters.n_keep if self.parameters.n_keep != -1 else self.nCtx
-
         lastNTokensData = [llama_cpp.llama_token(0)] * max(
             0, self.parameters.n_keep - len(self.inputIds[: self.pastTokens])
         ) + self.inputIds[: self.pastTokens][-lastNTokensSize :].tolist()
 
         lastNTokensData = (llama_cpp.llama_token * lastNTokensSize)(*lastNTokensData)
+
         logits: npt.NDArray[np.single] = self.scores[: self.pastTokens, :][-1, :]
 
         candidates = self.pCandidates
@@ -204,11 +204,11 @@ class LlamaModel:
     def generateTokens(self, tokens: List[int]):
         nTokens = 0
         while True:
-            self.evaluate(tokens=tokens, batch=24)
+            self.evaluate(tokens=tokens, batch=32)
             newToken = self.sampleTokenWithModel()
             tokensON = yield newToken
             tokens = [newToken]
-            print(f"LLMCore: generateTokens: new token: {newToken}")
+            #print(f"LLMCore: generateTokens: new token: {newToken}")
             if tokensON:
                 tokens.extend(tokensON)
 
@@ -235,7 +235,7 @@ class LlamaModel:
         tokens: List[int] = []
         tokenizedPromptTokens: List[int] = (self.tokenizeFull(self.parameters.prompt) if self.parameters.prompt != ""
                                             else [llama_cpp.llama_token_bos(self.context)])
-        print(tokenizedPromptTokens)
+
         if len(tokenizedPromptTokens) >= self.parameters.nCtx:
             print(f"{tokenizedPromptTokens} tokens were requested to be processed, maximum is "
                   f"{llama_cpp.llama_n_ctx(self.context)}")
@@ -251,14 +251,12 @@ class LlamaModel:
         for t in self.generateTokens(tokens=tokenizedPromptTokens):  # should probably remove either tempbytes or
             if t == self.EOSToken:                                   # finalstring
                 finalString = self.tokensToString(tokens=tokens) if len(finalString)+1 != len(tokens) else finalString
-                print("before")
-                if len(tokens) <= 1:
-                    continue
+                #if len(tokens) <= 1:
+                #    continue
                 break
             tokens.append(t)
             #tokens.append(1)
             tempBytes += self.tokenToByte(token=tokens[-1])
-            print(tempBytes.decode("utf8", errors="ignore"))
 
             for k, char in enumerate(tempBytes[-3:]):
                 k = 3 - k
