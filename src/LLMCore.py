@@ -235,7 +235,7 @@ class LlamaModel:
         tokens: List[int] = []
         tokenizedPromptTokens: List[int] = (self.tokenizeFull(self.parameters.prompt) if self.parameters.prompt != ""
                                             else [llama_cpp.llama_token_bos(self.context)])
-
+        print(tokenizedPromptTokens)
         if len(tokenizedPromptTokens) >= self.parameters.nCtx:
             print(f"{tokenizedPromptTokens} tokens were requested to be processed, maximum is "
                   f"{llama_cpp.llama_n_ctx(self.context)}")
@@ -251,9 +251,12 @@ class LlamaModel:
         for t in self.generateTokens(tokens=tokenizedPromptTokens):  # should probably remove either tempbytes or
             if t == self.EOSToken:                                   # finalstring
                 finalString = self.tokensToString(tokens=tokens) if len(finalString)+1 != len(tokens) else finalString
+                print("before")
+                if len(tokens) <= 1:
+                    continue
                 break
-
             tokens.append(t)
+            #tokens.append(1)
             tempBytes += self.tokenToByte(token=tokens[-1])
             print(tempBytes.decode("utf8", errors="ignore"))
 
@@ -290,7 +293,7 @@ class LlamaModel:
             return "placeholder"
 
     def loadPrompt(self, path: str = None, prompt: str = None, type: str = None):
-        supportedPromptTypes = ['alpaca', 'pygmalion', 'pygmalion2', 'zephyr', 'openhermes-mistral']
+        supportedPromptTypes = ['alpaca', 'pygmalion', 'pygmalion2', 'zephyr-beta', 'openhermes-mistral']
 
         if path is not None:
             with open(path) as f:
@@ -322,19 +325,28 @@ class LlamaModel:
             self.inputPrefix = "<|user|>"
             self.outputPrefix = "<|model|>"
             self.parameters.prompt.replace("PYGMALION2", "")
-        elif type.lower() == "zephyr":
-            self.systemPromptPrefix = ""
-            self.inputPrefix = "</s><|user|>"
-            self.outputPrefix = "</s><|assistant|>"
+        elif type.lower() == "zephyr-beta":
+            self.systemPromptPrefix = "<|system|>"
+            self.systemPromptSplitter = "</s>"
+            self.userInputPrefix = "<|user|>"
+            self.llmOutputPrefix = "<|assistant|>"
+            self.inputPrefix = ""
+            self.inputPostfix = "</s>"
+            self.promptUseNames = False
         elif type.lower() == "openhermes-mistral":
             self.systemPromptSplitter = "<|im_end|>"
             self.systemPromptPrefix = "<|im_start|>system"
+            self.userInputPrefix = ""
+            self.llmOutputPrefix = ""
             self.inputPrefix = "<|im_start|>"
             self.inputPostfix = "<|im_end|>"
+            self.promptUseNames = True
 
-    def promptTemplate(self):
-        template = f"{self.inputPrefix}[inputName]:\n[inputText]{self.inputPostfix}\n"
-        template += f"{self.inputPrefix}[outputName]:\n"
+    def promptTemplate(self, inputName: str = None):
+        template = f"{self.inputPrefix}{self.userInputPrefix}" \
+                   f"{((inputName+':') if self.promptUseNames is True else ' ')}\n[inputText]{self.inputPostfix}\n"
+        template += f"{self.inputPrefix}{self.llmOutputPrefix}" \
+                    f"{((self.parameters.modelName+':') if self.promptUseNames is True else ' ')}\n"
         return template
 
     def manipulatePrompt(self, new, setting):

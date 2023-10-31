@@ -36,15 +36,15 @@ class Melba:
         llmConfig.nCtx = 1024
         llmConfig.n_keep = 1024
         llmConfig.modelName = "Melba"
-        llmConfig.modelType = "OpenHermes-Mistral"
+        llmConfig.modelType = "zephyr-beta"
         llmConfig.antiPrompt.append("You:")
         llmConfig.antiPrompt.append("Melba:")
-        llmConfig.n_predict = 32
+        llmConfig.n_predict = 64
         llmConfig.mirostat = 2
         llmConfig.frequency_penalty = 8
         llmConfig.top_p = 0.60
         llmConfig.top_k = 25
-        llmConfig.temperature = 0.50
+        llmConfig.temperature = 0.80
         llmConfig.nOffloadLayer = 100
         llmConfig.mainGPU = 0
         llmConfig.repeat_penalty = 1.2
@@ -138,15 +138,14 @@ class Melba:
     def structurePrompt(self, person: str, message: str, sysPromptSetting: str) -> str:
         systemPrompt = self.accessMemories(keyword=sysPromptSetting, setting='systemPrompt')
         characterInformation = self.accessMemories(keyword=person, setting="characterdata")
-        generalInformation = f"The current data is {datetime.today().strftime('%Y-%m-%d')}\n" \
+        generalInformation = f"The current date is {datetime.today().strftime('%Y-%m-%d')}\n" \
                              f"The current time is {time.strftime('%H:%M:%S', time.localtime())}" # TODO: Make it happen
         pastConversation = self.accessMemories(keyword=person, setting='savedchat')
 
-        self.convoStyle = self.llm.promptTemplate()
-        self.convoStyle = self.convoStyle.replace("[inputName]", person).replace("[outputName]", self.llmConfig.modelName)
+        self.convoStyle = self.llm.promptTemplate(inputName=person)
         self.convoStyle = self.convoStyle.replace("[inputText]", message)
 
-        finalPrompt = (f"{self.llm.systemPromptPrefix}{systemPrompt}" +
+        finalPrompt = (f"{self.llm.systemPromptPrefix}\n{systemPrompt}" +
                        f"{characterInformation}" +
                        f"{characterInformation}\n" +
                        f"{generalInformation}\n" +                               # TODO: implement information retrieval
@@ -195,7 +194,7 @@ class Melba:
         self.curPrompt = self.structurePrompt(person,
                                               message,
                                               sysPromptSetting)        # insert model specific tokens
-        self.llm.loadPrompt(path=None, prompt=self.curPrompt, type="openhermes-mistral")
+        self.llm.loadPrompt(path=None, prompt=self.curPrompt, type=self.llmConfig.modelType)
         if self.curPrompt == "":  # we shouldn't even get here
             print("melbaToast: Something went wrong while constructing the prompt, please restart Melba.")
 
