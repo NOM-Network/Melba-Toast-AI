@@ -307,6 +307,7 @@ class LlamaModel:
         else:
             print("LLMCore: No prompt loaded.")
 
+        self._promptTemplate = ""
         #TODO: fix prompt types, currently mistral has the sole working prompt style
         if type.lower() == "alpaca":
             self.systemPromptPrefix = ""
@@ -328,24 +329,19 @@ class LlamaModel:
             self.systemPromptSplitter = "</s>"
             self.userInputPrefix = "<|user|>"
             self.llmOutputPrefix = "<|assistant|>"
-            self.inputPrefix = ""
-            self.inputPostfix = "</s>"
-            self.promptUseNames = False
+            self.inputSuffix = "</s>"
+            self._promptTemplate = f"{self.userInputPrefix}\n[inputText]{self.inputSuffix}\n" \
+                                   f"{self.llmOutputPrefix}\n"
         elif type.lower() == "openhermes-mistral":
             self.systemPromptSplitter = "<|im_end|>"
             self.systemPromptPrefix = "<|im_start|>system"
-            self.userInputPrefix = ""
-            self.llmOutputPrefix = ""
             self.inputPrefix = "<|im_start|>"
-            self.inputPostfix = "<|im_end|>"
-            self.promptUseNames = True
+            self.inputSuffix = "<|im_end|>"
+            self._promptTemplate = f"{self.inputPrefix}user\n[inputText]{self.inputSuffix}\n" \
+                                  f"{self.inputPrefix}assistant\n"
 
-    def promptTemplate(self, inputName: str = None):
-        template = f"{self.inputPrefix}{self.userInputPrefix}" \
-                   f"{((inputName+':') if self.promptUseNames is True else ' ')}\n[inputText]{self.inputPostfix}\n"
-        template += f"{self.inputPrefix}{self.llmOutputPrefix}" \
-                    f"{((self.parameters.modelName+':') if self.promptUseNames is True else ' ')}\n"
-        return template
+    def promptTemplate(self, inputText: str = ""):
+        return self._promptTemplate.replace("[inputText]", inputText)
 
     def manipulatePrompt(self, new, setting):
         pass    # add some functionality to mess with the prompt during runtime

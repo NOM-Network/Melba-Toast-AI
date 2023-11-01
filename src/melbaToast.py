@@ -2,6 +2,7 @@ import LLMCore
 import memoryDB
 from nrclex import NRCLex
 from datetime import datetime
+from typing import List
 import time
 import json
 
@@ -36,11 +37,11 @@ class Melba:
         llmConfig.nCtx = 1024
         llmConfig.n_keep = 1024
         llmConfig.modelName = "Melba"
-        llmConfig.modelType = "zephyr-beta"
+        llmConfig.modelType = "openhermes-mistral"
         llmConfig.antiPrompt.append("You:")
         llmConfig.antiPrompt.append("Melba:")
         llmConfig.n_predict = 64
-        llmConfig.mirostat = 2
+        llmConfig.mirostat = 1
         llmConfig.frequency_penalty = 8
         llmConfig.top_p = 0.60
         llmConfig.top_k = 25
@@ -87,11 +88,11 @@ class Melba:
                 response = new
         return response
 
-    def getSystemprompt(self, keyword: str):
-        response = self.memoryDB.metadataQueryDB(type="systemprompt", identifier=keyword)
+    def getSystemprompt(self, queries: List[str]):
+        response = self.memoryDB.vectorQueryDB(queries=queries, filter={"type" : {"$eq" : "systemprompt"}})
 
         if response == "":
-            print(f"melbaToast: No system prompt with keyword {keyword} found, loading generic.")
+            print(f"melbaToast: No system prompt with queries '{queries}' found, loading generic.")
             response = self.memoryDB.metadataQueryDB(type="systemprompt", identifier="generic")
         return response
 
@@ -116,7 +117,7 @@ class Melba:
         if setting == "savedchat":
             res = self.getSavedChat(username=keyword)
         elif setting == "systemPrompt":
-            res = self.getSystemprompt(keyword=keyword)
+            res = self.getSystemprompt(queries=[keyword])
         elif setting == "characterdata":
             res = self.getPersonalInformation(name=keyword)
         elif setting == "generalinformation":
@@ -142,8 +143,7 @@ class Melba:
                              f"The current time is {time.strftime('%H:%M:%S', time.localtime())}" # TODO: Make it happen
         pastConversation = self.accessMemories(keyword=person, setting='savedchat')
 
-        self.convoStyle = self.llm.promptTemplate(inputName=person)
-        self.convoStyle = self.convoStyle.replace("[inputText]", message)
+        self.convoStyle = self.llm.promptTemplate(inputText=message)
 
         finalPrompt = (f"{self.llm.systemPromptPrefix}\n{systemPrompt}" +
                        f"{characterInformation}" +
@@ -157,35 +157,12 @@ class Melba:
 
     def emotion(self, text):
         n = NRCLex(text=text)
-        rawEmotions = n.top_emotions
         currentEmotions = []
 
-        print(rawEmotions)
-        if rawEmotions[0][1] == 0.0:
-            return "neutral"
-
-        for emotion in rawEmotions:
+        for emotion in n.top_emotions:
             currentEmotions.append(emotion[0])
 
-        if 'surprise' and 'positive' in currentEmotions:
-            return 'happy'
-        elif 'surprise' and 'negative' in currentEmotions:
-            return 'angered'
-        elif 'fear' and 'negative' in currentEmotions:
-            return 'scared'
-        elif 'positive' or 'joy' in currentEmotions:
-            return "happy"
-        elif 'anger' or 'negative' in currentEmotions:
-            return 'angered'
-        elif 'sadness' or 'negative' in currentEmotions:
-            return 'sad'
-        elif 'trust' in currentEmotions:
-            return 'trust'
-        elif 'fear' in currentEmotions:
-            return 'scared'
-        elif 'anticipation' in currentEmotions:
-            return 'neutral'
-        return 'neutral'
+        return currentEmotions
 
     def getEmotion(self):
         return self.curEmotion
@@ -204,25 +181,26 @@ class Melba:
         # else:
         print(f"\nmelbaToast: Current prompt is:\n -[{self.curPrompt}]-\n")
 
-        response = (self.llm.response(stream=False)).split()
+        response = self.llm.response(stream=False)
         #response = self.llm.response(stream=False)
 
         # filter
-        actualResponse = ""
-        for word in response:
+        filteredResponse = ""
+        for word in response.split():
             if self.isSwearWord(word=word):
-                actualResponse += " [TOASTED]"
+                filteredResponse += " [TOASTED]"
             else:
-                actualResponse += ' ' + word
+                filteredResponse += ' ' + word
 
         self.updateMemory(type="savedchat", person=person,
                           newContent=(f"{self.accessMemories(keyword=person, setting='savedchat')}\n"
-                                      + self.convoStyle + actualResponse + self.llm.inputPostfix))
+                                      + self.convoStyle + response + self.llm.inputSuffix))
         self.llm.reset()  # needs to be improved
-        self.curEmotion = self.emotion(actualResponse)
-        self.log(message=f"User: '{person}' \tMessage: '{message}' \tMelba response: '{actualResponse}' \tEmotion: "
+        self.log(message=f"User: '{person}' \tMessage: '{message}' \tMelba response: '{response}' \tEmotion: "
                          f"'{self.curEmotion}'")
-        return actualResponse
+
+        actualResponse = {'response' : filteredResponse, 'emotions' : self.emotion(response)}
+        return json.dumps(actualResponse)
     # stream: Whether to return full response or stream the result
     def regenerateResponse(self, stream=False):
         if stream:

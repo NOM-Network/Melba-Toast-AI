@@ -1,4 +1,5 @@
 import chromadb
+from typing import List
 from distutils.dir_util import copy_tree # used to create a backup
 
 # TODO: Automatically backup Client
@@ -7,7 +8,11 @@ class MemoryDB:
         self.dbPath = path
         self.chromaClient = chromadb.PersistentClient(path)
 
+        self.chromaCollections = []
         self.chromaCollection = self.chromaClient.get_or_create_collection(name="MemoryDB")
+
+    def switchCollection(self, collectionName: str):
+        self.chromaCollection = self.chromaClient.get_or_create_collection(name=collectionName)
 
     def newDBEntry(self, type: str, identifier: str, content: str):
         if self.entryExists(type, identifier):
@@ -63,12 +68,15 @@ class MemoryDB:
                                          )
         return result["ids"][0]
 
-    def vectorQueryDB(self, query: str) -> str:
-        response = self.chromaCollection.query(query_texts=[query], n_results=1)['documents']
+    def vectorQueryDB(self, queries: List[str], filter: dict = None) -> str:
+        response = self.chromaCollection.query(query_texts=queries, n_results=1)['documents'] if filter is None \
+              else self.chromaCollection.query(query_texts=queries, where=filter, n_results=1)
         if not response:
             print(f"MemoryDB: No entry found.\n")
             return ""
-        return response[0][0]
+
+        return response["documents"][0][0]
+
     def metadataQueryDB(self, id: str = None, type: str = None, identifier: str = None):
         if id is not None:
             temp = self.chromaCollection.get(ids=[id])['documents']
