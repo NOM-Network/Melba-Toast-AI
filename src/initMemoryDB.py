@@ -58,4 +58,4 @@ def initSwearWords(filePath: str, filePathExclusions: str = None):
 
 initSysPrompts(filePath="memories/systemPrompts.txt")
 initCharacterMemory(filePath="memories/characterInformation.txt")
-initSwearWords(filePath="memories/swearWords.txt")
+initSwearWords(filePath="memories/bannedWords.txt")

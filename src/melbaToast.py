@@ -89,11 +89,11 @@ class Melba:
         return response
 
     def getSystemprompt(self, queries: List[str]):
-        response = self.memoryDB.vectorQueryDB(queries=queries, filter={"type" : {"$eq" : "systemprompt"}})
+        response = self.memoryDB.vectorQueryDB(queries=queries, filter={"type" : {"$eq" : "systemPrompt"}})
 
         if response == "":
             print(f"melbaToast: No system prompt with queries '{queries}' found, loading generic.")
-            response = self.memoryDB.metadataQueryDB(type="systemprompt", identifier="generic")
+            response = self.memoryDB.metadataQueryDB(type="systemPrompt", identifier="generic")
         return response
 
     def getPersonalInformation(self, name: str):
@@ -167,9 +167,20 @@ class Melba:
     def getEmotion(self):
         return self.curEmotion
 
+    def filterMessage(self, message: str) -> str:
+        filteredMessage = []
+        for word in message.split():
+            if self.isSwearWord(word=word):
+                filteredMessage.append("[TOASTED]")
+            else:
+                filteredMessage.append(word)
+
+        return filteredMessage[1] + ' '.join(filteredMessage[1:])
+
     def getMelbaResponse(self, message, sysPromptSetting, person, stream=False) -> str:
+        filteredInput = self.filterMessage(message)
         self.curPrompt = self.structurePrompt(person,
-                                              message,
+                                              filteredInput,
                                               sysPromptSetting)        # insert model specific tokens
         self.llm.loadPrompt(path=None, prompt=self.curPrompt, type=self.llmConfig.modelType)
         if self.curPrompt == "":  # we shouldn't even get here
@@ -182,15 +193,9 @@ class Melba:
         print(f"\nmelbaToast: Current prompt is:\n -[{self.curPrompt}]-\n")
 
         response = self.llm.response(stream=False)
-        #response = self.llm.response(stream=False)
 
         # filter
-        filteredResponse = ""
-        for word in response.split():
-            if self.isSwearWord(word=word):
-                filteredResponse += " [TOASTED]"
-            else:
-                filteredResponse += ' ' + word
+        filteredResponse = self.filterMessage(response)
 
         self.updateMemory(type="savedchat", person=person,
                           newContent=(f"{self.accessMemories(keyword=person, setting='savedchat')}\n"
