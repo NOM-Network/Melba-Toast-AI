@@ -21,11 +21,8 @@ async def handler(request):
                                      sysPromptSetting=request["sysPromptSetting"],
                                      person=request["person"])
         if res:
-            try:
-                print("getMelbaResponse: Successfully sent response")
-                return {'response' : 'success', 'llmResponse' : res}
-            except:
-                raise Exception("Failed to send response 'getMelbaResponse'")
+            print("getMelbaResponse: Successfully sent response")
+            return {'response' : 'success', 'llmResponse' : res}
         else:
             print("getMelbaResponse: No response from LLM")
     elif fName == "setbackup":
@@ -38,11 +35,8 @@ async def handler(request):
     elif fName == "getemotion":
         res = Melba.getEmotion()
         if res:
-            try:
-                print("getEmotion: Successfully sent response")
-                return {'response' : 'success', 'llmResponse' : melba.getEmotion()}
-            except:
-                raise Exception("Failed to send response 'getEmotion'")
+            print("getEmotion: Successfully sent response")
+            return {'response' : 'success', 'llmResponse' : melba.getEmotion()}
         else:
             print("getEmotion: No response from LLM")
     elif fName == "updatellmconfig":
