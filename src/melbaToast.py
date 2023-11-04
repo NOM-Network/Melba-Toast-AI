@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import List
 import time
 import json
+import yake
 
 # TODO: Handle system prompts inside the databank
 class Melba:
@@ -104,12 +105,19 @@ class Melba:
         return response
 
     # results are probably not very accurate and need to be improved
-    def getGeneralInformation(self, keyword: str):
-        response = self.memoryDB.vectorQueryDB(keyword)
-
-        if response == "":
-            print(f"melbaToast: No information about {keyword} was found.")
-        return response
+    def getGeneralInformation(self, message: str) -> str:
+        generalInfo = ""
+        topN = 3
+        keywordExtractor = yake.KeywordExtractor()
+        keywords = keywordExtractor.extract_keywords(text=message)
+        keywords.sort(key=lambda e: e[1])
+        keywords = keywords[-topN:]
+        topKeywords = []
+        for kwPair in keywords:
+            topKeywords.append(kwPair[0])
+        print(topKeywords)
+        generalInfo += self.memoryDB.vectorQueryDB(queries=topKeywords)
+        return generalInfo
 
     def accessMemories(self, keyword: str, setting: str) -> str:
         print(f"melbaToast debug: Inside getPastMemories keyword: {keyword} setting: {setting}")
@@ -139,8 +147,7 @@ class Melba:
     def structurePrompt(self, person: str, message: str, sysPromptSetting: str) -> str:
         systemPrompt = self.accessMemories(keyword=sysPromptSetting, setting='systemPrompt')
         characterInformation = self.accessMemories(keyword=person, setting="characterdata")
-        generalInformation = f"The current date is {datetime.today().strftime('%Y-%m-%d')}\n" \
-                             f"The current time is {time.strftime('%H:%M:%S', time.localtime())}" # TODO: Make it happen
+        generalInformation = f"{self.getGeneralInformation(message=message)}\n" # TODO: Make it happen
         pastConversation = self.accessMemories(keyword=person, setting='savedchat')
 
         self.convoStyle = self.llm.promptTemplate(inputText=message)

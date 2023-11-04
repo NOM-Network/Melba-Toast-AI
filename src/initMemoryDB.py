@@ -1,7 +1,7 @@
 import memoryDB
 from typing import List
 
-memDB = memoryDB.MemoryDB(path="db")
+memDB = memoryDB.MemoryDB(path="../db")
 
 def initSysPrompts(filePath: str):
     systemPrompts: List[str] = []
@@ -56,6 +56,6 @@ def initSwearWords(filePath: str, filePathExclusions: str = None):
         memDB.newDBEntry(type="swearwords", identifier="all", content=swearWordsFull)
 
 
-initSysPrompts(filePath="memories/systemPrompts.txt")
-initCharacterMemory(filePath="memories/characterInformation.txt")
-initSwearWords(filePath="memories/bannedWords.txt")
+initSysPrompts(filePath="../memories/systemPrompts.txt")
+initCharacterMemory(filePath="../memories/characterInformation.txt")
+initSwearWords(filePath="../memories/bannedWords.txt")

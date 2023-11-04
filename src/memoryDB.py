@@ -75,7 +75,7 @@ class MemoryDB:
             print(f"MemoryDB: No entry found.\n")
             return ""
 
-        return response["documents"][0][0]
+        return response[0][0]
 
     def metadataQueryDB(self, id: str = None, type: str = None, identifier: str = None):
         if id is not None:
