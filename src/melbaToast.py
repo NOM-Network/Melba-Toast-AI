@@ -22,7 +22,7 @@ class Melba:
         self.llm.loadPrompt(type=self.llmConfig.modelType)
         self.curEmotion = "neutral"
         self.curPrompt = ""
-        self.swearWords = []
+        self.swearWords = ""
         self.log(message="Initialized Melba.")
 
     def setBackup(self, mode: bool):
@@ -40,10 +40,12 @@ class Melba:
         llmConfig.modelName = "Melba"
         llmConfig.modelType = "openhermes-mistral"
         llmConfig.antiPrompt.append("You:")
-        llmConfig.antiPrompt.append("Melba:")
+        llmConfig.antiPrompt.append("<|im_end|>")
+        llmConfig.antiPrompt.append("<|im_start|>")
+        llmConfig.antiPrompt.append("<br>")
         llmConfig.n_predict = 64
-        llmConfig.mirostat = 1
-        llmConfig.frequency_penalty = 8
+        llmConfig.mirostat = 2
+        llmConfig.frequency_penalty = 0.8
         llmConfig.top_p = 0.60
         llmConfig.top_k = 25
         llmConfig.temperature = 0.80
@@ -90,12 +92,14 @@ class Melba:
         return response
 
     def getSystemprompt(self, queries: List[str]):
-        response = self.memoryDB.vectorQueryDB(queries=queries, filter={"type" : {"$eq" : "systemPrompt"}})
-
+        response = json.loads(
+                    json.dumps(self.memoryDB.vectorQueryDB(queries=queries, filter={"type" : {"$eq" : "systemPrompt"}}))
+                    )
+        response = response['documents']
         if response == "":
             print(f"melbaToast: No system prompt with queries '{queries}' found, loading generic.")
             response = self.memoryDB.metadataQueryDB(type="systemPrompt", identifier="generic")
-        return response
+        return response[0][0]
 
     def getPersonalInformation(self, name: str):
         response = self.memoryDB.metadataQueryDB(type="characterdata", identifier=name)
@@ -106,7 +110,6 @@ class Melba:
 
     # results are probably not very accurate and need to be improved
     def getGeneralInformation(self, message: str) -> str:
-        generalInfo = ""
         topN = 3
         keywordExtractor = yake.KeywordExtractor()
         keywords = keywordExtractor.extract_keywords(text=message)
@@ -116,7 +119,8 @@ class Melba:
         for kwPair in keywords:
             topKeywords.append(kwPair[0])
         print(topKeywords)
-        generalInfo += self.memoryDB.vectorQueryDB(queries=topKeywords)
+        generalInfo = json.loads(json.dumps(self.memoryDB.vectorQueryDB(queries=topKeywords)))
+        generalInfo = generalInfo['documents'][0][0]
         return generalInfo
 
     def accessMemories(self, keyword: str, setting: str) -> str:
@@ -147,15 +151,14 @@ class Melba:
     def structurePrompt(self, person: str, message: str, sysPromptSetting: str) -> str:
         systemPrompt = self.accessMemories(keyword=sysPromptSetting, setting='systemPrompt')
         characterInformation = self.accessMemories(keyword=person, setting="characterdata")
-        generalInformation = f"{self.getGeneralInformation(message=message)}\n" # TODO: Make it happen
+        generalInformation = ""#f"{self.getGeneralInformation(message=message)}\n" # TODO: Make it happen
         pastConversation = self.accessMemories(keyword=person, setting='savedchat')
 
         self.convoStyle = self.llm.promptTemplate(inputText=message)
 
         finalPrompt = (f"{self.llm.systemPromptPrefix}\n{systemPrompt}" +
                        f"{characterInformation}" +
-                       f"{characterInformation}\n" +
-                       f"{generalInformation}\n" +                               # TODO: implement information retrieval
+                       f"{generalInformation}" +                               # TODO: implement information retrieval
                        f"{self.llm.systemPromptSplitter}\n{pastConversation}\n" + # TODO: for certain keywords
                           self.convoStyle)
 
@@ -182,12 +185,12 @@ class Melba:
             else:
                 filteredMessage.append(word)
 
-        return filteredMessage[1] + ' '.join(filteredMessage[1:])
+        return ' '.join(filteredMessage)
 
     def getMelbaResponse(self, message, sysPromptSetting, person, stream=False) -> str:
-        filteredInput = self.filterMessage(message)
+        #filteredInput = self.filterMessage(message)
         self.curPrompt = self.structurePrompt(person,
-                                              filteredInput,
+                                              message,
                                               sysPromptSetting)        # insert model specific tokens
         self.llm.loadPrompt(path=None, prompt=self.curPrompt, type=self.llmConfig.modelType)
         if self.curPrompt == "":  # we shouldn't even get here
@@ -202,7 +205,7 @@ class Melba:
         response = self.llm.response(stream=False)
 
         # filter
-        filteredResponse = self.filterMessage(response)
+        #filteredResponse = self.filterMessage(response)
 
         self.updateMemory(type="savedchat", person=person,
                           newContent=(f"{self.accessMemories(keyword=person, setting='savedchat')}\n"
@@ -211,7 +214,7 @@ class Melba:
         self.log(message=f"User: '{person}' \tMessage: '{message}' \tMelba response: '{response}' \tEmotion: "
                          f"'{self.curEmotion}'")
 
-        actualResponse = {'response' : filteredResponse, 'emotions' : self.emotion(response)}
+        actualResponse = {'response' : response, 'emotions' : self.emotion(response)}
         return json.dumps(actualResponse)
     # stream: Whether to return full response or stream the result
     def regenerateResponse(self, stream=False):

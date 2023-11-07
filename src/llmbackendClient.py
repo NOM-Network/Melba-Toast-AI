@@ -17,7 +17,7 @@ async def handler(request):
     fName = request["fName"].lower()
 
     if fName == "getmelbaresponse":
-        res = Melba.getMelbaResponse(message=request["message"],
+        res = melba.getMelbaResponse(message=request["message"],
                                      sysPromptSetting=request["sysPromptSetting"],
                                      person=request["person"])
         if res:
@@ -27,13 +27,13 @@ async def handler(request):
             print("getMelbaResponse: No response from LLM")
     elif fName == "setbackup":
         try:
-            Melba.setBackup(mode=request["setting"])
+            melba.setBackup(mode=request["setting"])
             print(f'setBackup: Successfully set backup to {request["setting"]}')
             return {'response' : 'success', 'llmResponse' : f'backup mode: {request["setting"]}'}
         except:
             raise Exception(f'Failed to set backup to {request["setting"]}')
     elif fName == "getemotion":
-        res = Melba.getEmotion()
+        res = melba.getEmotion()
         if res:
             print("getEmotion: Successfully sent response")
             return {'response' : 'success', 'llmResponse' : melba.getEmotion()}
@@ -41,7 +41,7 @@ async def handler(request):
             print("getEmotion: No response from LLM")
     elif fName == "updatellmconfig":
         try:
-            Melba.updateLLMConfig(newConfig=request["config"])
+            melba.updateLLMConfig(newConfig=request["config"])
             print("updateLLMConfig: Successfully updated LLM config")
             return {'response' : 'success', 'llmResponse' : 'updated llmconfig'}
         except:

@@ -324,6 +324,15 @@ class LlamaModel:
             self.inputPrefix = "<|user|>"
             self.outputPrefix = "<|model|>"
             self.parameters.prompt.replace("PYGMALION2", "")
+        elif type.lower() == "openchat-3.5":
+            self.userInputPrefix = "GPT4 User"
+            self.llmOutputPrefix = "GPT4 Assistant"
+            self.inputSuffix = "<|end_of_turn|>"
+            self.inputPrefix = "<s>"
+            self.systemPromptPrefix = "GPT4 User"
+            self.systemPromptSplitter = "<|end_of_turn|>"
+            self._promptTemplate = f"{self.userInputPrefix}:\n[inputText]{self.inputSuffix}\n" \
+                                   f"{self.llmOutputPrefix}: "
         elif type.lower() == "zephyr-beta":
             self.systemPromptPrefix = "<|system|>"
             self.systemPromptSplitter = "</s>"
