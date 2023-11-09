@@ -68,9 +68,9 @@ class MemoryDB:
                                          )
         return result["ids"][0]
 
-    def vectorQueryDB(self, queries: List[str], filter: dict = None):
-        response = self.chromaCollection.query(query_texts=queries, n_results=1) if filter is None \
-              else self.chromaCollection.query(query_texts=queries, where=filter, n_results=1)
+    def vectorQueryDB(self, queries: List[str], filter: dict = None, nResults: int = 1):
+        response = self.chromaCollection.query(query_texts=queries, n_results=nResults) if filter is None \
+              else self.chromaCollection.query(query_texts=queries, where=filter, n_results=nResults)
         if not response:
             print(f"MemoryDB: No entry found.\n")
             return ""
