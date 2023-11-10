@@ -7,9 +7,6 @@ from typing import List
 from time import time
 from random import randint
 
-def defaultLlamactxParams():
-    return LLMUtils.LLMConfig()
-
 class LlamaModel:
     def __init__(self, parameters: LLMUtils.LLMConfig):
         self.parameters = parameters
