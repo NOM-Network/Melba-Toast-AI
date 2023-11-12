@@ -346,8 +346,10 @@ class LlamaModel:
             self._promptTemplate = f"{self.inputPrefix}user\n[inputText]{self.inputSuffix}\n" \
                                   f"{self.inputPrefix}assistant\n"
 
-    def promptTemplate(self, inputText: str = ""):
-        return self._promptTemplate.replace("[inputText]", inputText)
+    def promptTemplate(self, inputText: str):
+        prompt = self._promptTemplate.replace("[inputText]", inputText)
+        print("Input text:" + inputText)
+        return prompt
 
     def manipulatePrompt(self, new, setting):
         pass    # add some functionality to mess with the prompt during runtime

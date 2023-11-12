@@ -1,6 +1,7 @@
 import chromadb
 from typing import List
 from distutils.dir_util import copy_tree # used to create a backup
+from dataclasses import dataclass
 
 # TODO: Automatically backup Client
 class MemoryDB:
@@ -68,23 +69,18 @@ class MemoryDB:
                                          )
         return result["ids"][0]
 
-    def vectorQueryDB(self, queries: List[str], filter: dict = None, nResults: int = 1):
+    def vectorQueryDB(self, queries: List[str], filter: str = None, nResults: int = 1):
         response = self.chromaCollection.query(query_texts=queries, n_results=nResults) if filter is None \
-              else self.chromaCollection.query(query_texts=queries, where=filter, n_results=nResults)
+              else self.chromaCollection.query(query_texts=queries,
+                                               where={"type": {"$eq": filter}},
+                                               n_results=nResults)
+
         if not response:
             print(f"MemoryDB: No entry found.\n")
             return ""
-
         return response
 
-    def metadataQueryDB(self, id: str = None, type: str = None, identifier: str = None):
-        if id is not None:
-            temp = self.chromaCollection.get(ids=[id])['documents']
-            if not temp:
-                print(f"MemoryDB: No entry with id '{id}' found.\n")
-                return ""
-            return temp[0]
-
+    def metadataQueryDB(self, type: str = None, identifier: str = None):
         temp = self.chromaCollection.get(where={
                                                 "$and" : [
                                                         {"type" : {"$eq" : type}},
@@ -98,9 +94,18 @@ class MemoryDB:
             return ""
         return temp[0]
 
-    def backupDB(self, backupPath):
-        try:
-            copy_tree(self.dbPath, backupPath)
-            print(f"MemoryDB: Successfully created a backup at location '{backupPath}'.")
-        except Exception:
-            print(f"MemoryDB: Failed to create a backup at location '{backupPath}', DB not affected.")
+    def idQueryDB(self, id: str = None):
+        temp = self.chromaCollection.get(ids=[id])['documents']
+
+        if not temp:
+            print(f"MemoryDB: No entry with id '{id}' found.\n")
+            return ""
+        return temp[0]
+
+    def backupDB(self, backupPath = None):
+        if backupPath is not None:
+            try:
+                copy_tree(self.dbPath, backupPath)
+                print(f"MemoryDB: Successfully created a backup at location '{backupPath}'.")
+            except:
+                print(f"MemoryDB: Failed to create a backup at location '{backupPath}', DB not affected.")
