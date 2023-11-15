@@ -49,29 +49,29 @@ def initPersonalityPrompts(filePath: str):
                              identifier=personalityIdentifiers[personalities.index(personality)],
                              content=personality)
 
-def initCharacterMemory(filePath: str):
-    characterInformation: List[str] = []
-    characterNames: List[str] = []
+def initInformationMemory(filePath: str):
+    information: List[str] = []
+    informationHeaders: List[str] = []
     curInformation = ""
-    curCharacter = ""
+    curHeader = ""
 
-    with open(filePath) as charInformationFile:
-        for line in charInformationFile.readlines():
-            if line.find("-=charInfoSplitter=-") != -1:
-                characterInformation.append(curInformation.replace("\n", ""))
-                characterNames.append(curCharacter.replace("\n", ""))
+    with open(filePath) as informationFile:
+        for line in informationFile.readlines():
+            if line.find("-=informationSplitter=-") != -1:
+                information.append(curInformation.replace("\n", ""))
+                informationHeaders.append(curHeader.replace("\n", ""))
                 curInformation = ""
-                curCharacter = ""
-            elif line.find("-=charInfoStart=-") != -1:
-                curCharacter = line[17:]
+                curHeader = ""
+            elif line.find("-=informationStart=-") != -1:
+                curHeader = line[20:]
             else:
                 curInformation += line
         if curInformation != '':
-            characterInformation.append(curInformation.replace("\n", ""))
-            characterNames.append(curCharacter.replace("\n", ""))
-    for name in characterNames:
-        memDB.newDBEntry(type="characterinformation", identifier=name,
-                         content=characterInformation[characterNames.index(name)])
+            information.append(curInformation.replace("\n", ""))
+            informationHeaders.append(curHeader.replace("\n", ""))
+    for header in informationHeaders:
+        memDB.newDBEntry(type="information", identifier=header,
+                         content=information[informationHeaders.index(header)])
 
 def initSwearWords(filePath: str, filePathExclusions: str = None):
     with open(filePath) as swearWords:
