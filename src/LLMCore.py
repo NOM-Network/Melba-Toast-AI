@@ -79,14 +79,15 @@ class LlamaModel:
     def warnAndExit(self, function, errorMessage):
         raise RuntimeError(f"LLMCore: Error in function: '{function}'. Following error message was provided: '{errorMessage}'\n")
 
-    def tokenizeFull(self, input: str, bos: bool = False) -> List[int]:   # Possibly further abstract by adding single
+    def tokenizeFull(self, input: str, bos: bool = False, special: bool = True) -> List[int]:   # Possibly further abstract by adding single
         tokens = (llama_cpp.llama_token * self.nCtx)()              # token, tokenization
         newTokens = llama_cpp.llama_tokenize(model=self.model,
                                              text=input.encode("utf8"),
                                              text_len=len(input.encode("utf8")),
                                              tokens=tokens,
                                              n_max_tokens=self.nCtx,
-                                             add_bos=bos)
+                                             add_bos=bos,
+                                             special=special)
         #print(len(input.encode("utf8")))
         print(f"LLMCore: {newTokens} token(s) were tokenized.")
         return list(tokens[:newTokens])
@@ -136,18 +137,13 @@ class LlamaModel:
         candidates.size = llama_cpp.c_size_t(self.nVocab)
 
         # actually sample the token
-        llama_cpp.llama_sample_repetition_penalty(ctx=self.context,
-                                                  candidates=llama_cpp.ctypes.byref(candidates),
-                                                  last_tokens_data=lastNTokensData,
-                                                  last_tokens_size=lastNTokensSize,
-                                                  penalty=self.parameters.repeat_penalty)
-
-        llama_cpp.llama_sample_frequency_and_presence_penalties(ctx=self.context,
-                                                                candidates=llama_cpp.ctypes.byref(candidates),
-                                                                last_tokens_data=lastNTokensData,
-                                                                last_tokens_size=lastNTokensSize,
-                                                                alpha_presence=self.parameters.presence_penalty,
-                                                                alpha_frequency=self.parameters.frequency_penalty)
+        llama_cpp.llama_sample_repetition_penalties(ctx=self.context,
+                                                    candidates=llama_cpp.ctypes.byref(candidates),
+                                                    last_tokens_data=lastNTokensData,
+                                                    penalty_last_n=lastNTokensSize,
+                                                    penalty_freq=self.parameters.frequency_penalty,
+                                                    penalty_repeat=self.parameters.repeat_penalty,
+                                                    penalty_present=self.parameters.presence_penalty)
 
         if self.parameters.temperature == 0.0:
             id = llama_cpp.llama_sample_token_greedy(ctx=self.context,
