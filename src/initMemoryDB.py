@@ -1,7 +1,7 @@
 import memoryDB
 from typing import List
 
-memDB = memoryDB.MemoryDB(path="db")
+memDB = memoryDB.MemoryDB(path="insert path to db")
 
 def initSysPrompts(filePath: str):
     systemPrompts: List[str] = []
@@ -28,7 +28,6 @@ def initPersonalityPrompts(filePath: str):
 
     with open(filePath) as personalitiesFile:
         for line in personalitiesFile.readlines():
-            #print(line)
             if line.find("-=personalitySplitter=-") != -1:
                 print(curPersonality)
                 print(curIdentifier)
@@ -38,7 +37,6 @@ def initPersonalityPrompts(filePath: str):
                 curIdentifier = ""
             elif line.find("-=personalityStart=-") != -1:
                 curIdentifier = line[20:]
-                #print(curIdentifier)
             else:
                 curPersonality += line
         if curPersonality != '':
@@ -83,7 +81,7 @@ def initSwearWords(filePath: str, filePathExclusions: str = None):
     if swearWordsFull != "":
         memDB.newDBEntry(type="swearwords", identifier="all", content=swearWordsFull)
 
-initSysPrompts(filePath="memories/systemPrompts.txt")
-initPersonalityPrompts(filePath="memories/personalities.txt")
-initCharacterMemory(filePath="memories/characterInformation.txt")
-initSwearWords(filePath="memories/bannedWords.txt")
+initSysPrompts(filePath="insert path to system prompts")
+initPersonalityPrompts(filePath="insert path to personality prompts")
+initInformationMemory(filePath="insert path to information file")
+initSwearWords(filePath="insert path to swear word file")

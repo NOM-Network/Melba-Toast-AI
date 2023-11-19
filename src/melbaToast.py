@@ -5,10 +5,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from nrclex import NRCLex
 from typing import List
-import requests
 import math
 import json
-import yake
 
 
 @dataclass
@@ -36,19 +34,21 @@ class Melba:
         self.llmConfig = defaultLlamactxParams()
         self.llmConfig.nCtx = 1024
         self.llmConfig.n_keep = 1024
+        self.llmConfig.n_predict = 128
         self.llmConfig.modelName = "Melba"
-        self.llmConfig.modelType = "openhermes-mistral"
-        self.llmConfig.antiPrompt.append("<|im_end|>")
-        self.llmConfig.antiPrompt.append("<|im_start|>")
-        self.llmConfig.n_predict = 64
+        self.llmConfig.modelType = "insert supported model"
+        self.llmConfig.antiPrompt = ["<"]
         self.llmConfig.mirostat = 2
-        self.llmConfig.frequency_penalty = 0.8
-        self.llmConfig.top_p = 0.60
-        self.llmConfig.top_k = 25
-        self.llmConfig.temperature = 0.75
+        self.llmConfig.mirostat_tau = 5.0
+        self.llmConfig.mirostat_eta = 0.25
+        self.llmConfig.frequency_penalty = 0.4
+        self.llmConfig.repeat_penalty = 1.2
+        self.llmConfig.top_p = 0.65
+        self.llmConfig.top_k = 30
+        self.llmConfig.temperature = 0.65
+        self.llmConfig.logit_bias = {32000 : 1.5}
         self.llmConfig.nOffloadLayer = 100
         self.llmConfig.mainGPU = 0
-        self.llmConfig.repeat_penalty = 1.2
 
     def getCurrentConfig(self):
         return self.llmConfig
@@ -65,6 +65,9 @@ class Melba:
 
         self.llm.update(newconfig)
 
+    def setStage(self, stage: int = 0):
+        self.stage = stage
+    
     def prompt(self, person: str, message: str) -> str:
         message = self.utils.preprocessMessage(message=message)
         if message == "":
@@ -73,17 +76,13 @@ class Melba:
         personality = self.memory.personality()
 
         # TODO: Implement retrieval augmented generation aka get relevant information into the context
-        context = ""
+        context = self.context.situationalContext(person=person, message=message)
         pastconversation = self.memory.savedChat(username=person)
-
         self.convoStyle = self.llm.promptTemplate(inputText=message)
-        print(message)
-        finalPrompt = (f"{self.llm.systemPromptPrefix}\n{systemprompt}" +
+        finalPrompt = (f"{self.llm.systemPromptPrefix} {systemprompt.replace('[personality]', personality)}\n"
+                       f"{context}"
                        f"{self.llm.systemPromptSplitter}\n"
-                       f"{self.llm.systemPromptPrefix}\n{personality}" +
-                       f"{self.llm.systemPromptSplitter}\n"
-                       f"{pastconversation}\n" +
-                          self.convoStyle)
+                       f"{pastconversation}\n" + self.convoStyle)
 
         finalPrompt = finalPrompt.replace("{llmName}", self.llmConfig.modelName)
         return finalPrompt
@@ -144,7 +143,7 @@ class Memory:
         return self.accessMemories(type="systemPrompt", identifier="generic") if response == "" else response
 
     def personality(self):
-        return self.accessMemories(type="personality", identifier="generic")
+        return self.accessMemories(type="personality", identifier="generic2")
 
     def personalInformation(self, name: str):
         return self.accessMemories(type="personalinformation", identifier=name)
@@ -155,9 +154,9 @@ class Memory:
                                 f"with identifier '{identifier}' and content '{newContent}'")
 
     def saveConversation(self, person: str, conversation: str):
-        lines = conversation.count("\n")  # TODO: change to more accurate way of measuring message count
+        lines = conversation.count("<|im")  # TODO: change to more accurate way of measuring message count
         if lines > 8:
-            lines = '\n'.join(conversation.split('\n')[8:])
+            lines = '\n'.join(conversation.split('\n')[5:])
         else:
             lines = conversation
         self.updateMemory(type="savedChat", identifier=person, newContent=f"{lines}")
@@ -175,13 +174,13 @@ class Context:
     def returnWebContent(self, searchQuery: str = None) -> List[str]:
         return ["placeholder"]
 
-    def situationalContext(self, message: str) -> str:
+    def situationalContext(self, person: str, message: str) -> str:
         # stage 2(?) should enable a llm summarizing and formatting the message into a useful query for the vectordb
         vectorstorageresponse = self.memoryDB.vectorQueryDB(queries=[message], filter=None, nResults=2)
         # stage 2 should summarize the results into something usable           - needs to be filtered
         if vectorstorageresponse == "":
             webResponse = self.returnWebContent(searchQuery=message) # searchQuery will be extracted keywords
-        return "placeholder"
+        return ""
 
 
 class EmotionHandler:
@@ -247,7 +246,7 @@ class MelbaTools:
     def isSwearWord(self, word: str) -> bool:
         if self.swearWords == "":
             self.swearWords = (self.memoryDB.metadataQueryDB(type="swearwords", identifier="all")).split()
-        if word in self.swearWords:
+        if word.replace('\n', '') in self.swearWords:
             return True
         return False
 

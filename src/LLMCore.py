@@ -24,7 +24,6 @@ class LlamaModel:
         self.modelParams.n_gpu_layers = self.parameters.nOffloadLayer
         self.modelParams.main_gpu = self.parameters.mainGPU
         self.modelPath = self.parameters.modelPath
-        print(str(self.modelParams.n_gpu_layers) + " " + str(self.modelParams.main_gpu))
 
         if self.modelPath is not None:
             try:
@@ -61,7 +60,7 @@ class LlamaModel:
         )
 
         self.pCandidates = candidates
-        self.EOSToken = llama_cpp.llama_token_eos(self.context)
+        self.EOSToken = 32000# llama_cpp.llama_token_eos(self.context)
         self.pCandidatesDataId = np.arange(self.nVocab, dtype=np.intc)
         self.pCandidatesDataP = np.zeros(self.nVocab, dtype=np.single)
         self.pastTokens = 0
@@ -88,8 +87,6 @@ class LlamaModel:
                                              n_max_tokens=self.nCtx,
                                              add_bos=bos,
                                              special=special)
-        #print(len(input.encode("utf8")))
-        print(f"LLMCore: {newTokens} token(s) were tokenized.")
         return list(tokens[:newTokens])
 
     def evaluate(self, tokens: List[int], batch: int):
@@ -98,7 +95,6 @@ class LlamaModel:
                 nBatch = tokens[i : min(len(tokens), i + batch)]
                 nPast = min(self.nCtx - len(nBatch), len(self.inputIds[: self.pastTokens]))
                 nTokens = len(nBatch)
-
                 evalCode = llama_cpp.llama_eval(ctx=self.context,
                                                 tokens=(llama_cpp.llama_token * len(nBatch))(*nBatch),
                                                 n_tokens=nTokens,
@@ -114,7 +110,6 @@ class LlamaModel:
                 offset = (0 if self.parameters.logitsAll else nTokens-1)
                 self.scores[self.pastTokens+offset:self.pastTokens+nTokens, :].reshape(-1)[:] \
                     = llama_cpp.llama_get_logits(self.context)[: rows * cols]
-                #print(f"pastTokens: {self.pastTokens} Tokens: {self.inputIds[self.pastTokens : self.pastTokens + nTokens]} String: {self.tokensToString(self.inputIds[self.pastTokens : self.pastTokens + nTokens])}") useful for debugging
                 self.pastTokens += nTokens
 
     def sampleTokenWithModel(self):
@@ -126,7 +121,8 @@ class LlamaModel:
         lastNTokensData = (llama_cpp.llama_token * lastNTokensSize)(*lastNTokensData)
 
         logits: npt.NDArray[np.single] = self.scores[: self.pastTokens, :][-1, :]
-
+        for token, bias in self.parameters.logit_bias.items():
+            logits[token] = logits[token] * bias
         candidates = self.pCandidates
         candidatesData = self.pCandidatesData
         candidatesData["id"][:] = self.pCandidatesDataId
@@ -197,11 +193,10 @@ class LlamaModel:
     def generateTokens(self, tokens: List[int]):
         nTokens = 0
         while True:
-            self.evaluate(tokens=tokens, batch=32)
+            self.evaluate(tokens=tokens, batch=64)
             newToken = self.sampleTokenWithModel()
             tokensON = yield newToken
             tokens = [newToken]
-            #print(f"LLMCore: generateTokens: new token: {newToken}")
             if tokensON:
                 tokens.extend(tokensON)
 
@@ -223,12 +218,13 @@ class LlamaModel:
 
     def generate(self, stream: bool = False) -> str:   # streaming disabled for now
         antiPrompts: List[str] = self.parameters.antiPrompt
+        exitTokens: List[int] = [2, 32002, 32001]
         tempBytes = b""
         finalString = ""
         tokens: List[int] = []
         tokenizedPromptTokens: List[int] = (self.tokenizeFull(self.parameters.prompt) if self.parameters.prompt != ""
                                             else [llama_cpp.llama_token_bos(self.context)])
-
+        
         if len(tokenizedPromptTokens) >= self.parameters.nCtx:
             print(f"{tokenizedPromptTokens} tokens were requested to be processed, maximum is "
                   f"{llama_cpp.llama_n_ctx(self.context)}")
@@ -242,20 +238,16 @@ class LlamaModel:
 
         incompleteFix: int = 0
         for t in self.generateTokens(tokens=tokenizedPromptTokens):  # should probably remove either tempbytes or
-            if t == self.EOSToken:                                   # finalstring
+            if t == self.EOSToken or t in exitTokens:                # finalstring
                 finalString = self.tokensToString(tokens=tokens) if len(finalString)+1 != len(tokens) else finalString
-                #if len(tokens) <= 1:
-                #    continue
                 break
             tokens.append(t)
-            #tokens.append(1)
             tempBytes += self.tokenToByte(token=tokens[-1])
 
             for k, char in enumerate(tempBytes[-3:]):
                 k = 3 - k
                 for number, pattern in [(2, 192), (3, 224), (4, 240)]:
                     if number > k and pattern & char == pattern:
-                        print(str(number) + " " + str(pattern))
                         incompleteFix = number - k
 
             if incompleteFix > 0:
@@ -301,7 +293,6 @@ class LlamaModel:
             print("LLMCore: No prompt loaded.")
 
         self._promptTemplate = ""
-        #TODO: fix prompt types, currently mistral has the sole working prompt style
         if type.lower() == "alpaca":
             self.systemPromptPrefix = ""
             self.inputPrefix = "### Instruction:"
@@ -344,11 +335,7 @@ class LlamaModel:
 
     def promptTemplate(self, inputText: str):
         prompt = self._promptTemplate.replace("[inputText]", inputText)
-        print("Input text:" + inputText)
         return prompt
-
-    def manipulatePrompt(self, new, setting):
-        pass    # add some functionality to mess with the prompt during runtime
 
     def printPrompt(self):
         if self.parameters.prompt:
@@ -358,7 +345,7 @@ class LlamaModel:
         llama_cpp.llama_print_timings(self.context)
         llama_cpp.llama_free(self.context)
 
-class LlamaOrig:
+class LlamaOrig: # TODO: remove this backend
     def __init__(self, params):
         self.parameters = params
         self.llama = Llama(model_path=self.parameters.modelPath,

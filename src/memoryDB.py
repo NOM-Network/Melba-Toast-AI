@@ -1,9 +1,9 @@
 import chromadb
 from typing import List
 from distutils.dir_util import copy_tree # used to create a backup
-from dataclasses import dataclass
 
 # TODO: Automatically backup Client
+# TODO: Implement actual logger instead of pushing information onto the console
 class MemoryDB:
     def __init__(self, path):
         self.dbPath = path
@@ -59,7 +59,7 @@ class MemoryDB:
         else:
             self.newDBEntry(type=type, identifier=identifier, content=content)
 
-    def getId(self, type: str, identifier: str, content: str = None):
+    def getId(self, type: str, identifier: str):
         result = self.chromaCollection.get(where={
                                                 "$and" : [
                                                         {"type" : {"$eq" : type}},
