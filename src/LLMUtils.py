@@ -22,6 +22,7 @@ class LLMConfig:
         self.prompt: str = ""
         self.antiPrompt: List[str] = []
 
+        self.seed = -1
         self.nCtx: int = 512
         self.n_keep: int = 512
         self.n_predict: int = 64
@@ -29,17 +30,21 @@ class LLMConfig:
         self.typical_p: int = 1
         self.top_k: int = 40
         self.top_p: float = 0.90
+        self.min_p: float = 0.10
         self.temperature: float = 0.6
         self.mirostat: int = 0
         self.mirostat_tau: float = 5.0
         self.mirostat_eta: float = 0.1
+        self.mirostat_mu = 2.0
         self.repeat_last_n: int = 512
         self.repeat_penalty: int = 1
+        self.repeat_decay: int = 0
         self.frequency_penalty: int = 0
         self.presence_penalty: int = 0
         self.penalize_nl: bool = False
         self.n_batch: int = 32
 
+        self.tokenHealing = False
         self.logitsAll = False
         self.logit_bias: dict[int, float] = {}
 

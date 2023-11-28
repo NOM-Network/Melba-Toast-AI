@@ -10,7 +10,8 @@ class MemoryDB:
         self.chromaClient = chromadb.PersistentClient(path)
 
         self.chromaCollections = []
-        self.chromaCollection = self.chromaClient.get_or_create_collection(name="MemoryDB")
+        self.chromaCollection = self.chromaClient.get_or_create_collection(name="MemoryDB",
+                                                                           metadata={"hnsw:space" : "cosine"})
 
     def switchCollection(self, collectionName: str):
         self.chromaCollection = self.chromaClient.get_or_create_collection(name=collectionName)

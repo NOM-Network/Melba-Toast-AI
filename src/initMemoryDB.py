@@ -48,28 +48,27 @@ def initPersonalityPrompts(filePath: str):
                              content=personality)
 
 def initInformationMemory(filePath: str):
-    information: List[str] = []
-    informationHeaders: List[str] = []
-    curInformation = ""
-    curHeader = ""
+    content = []
+    header = ""
+    tempContent = []
 
-    with open(filePath) as informationFile:
-        for line in informationFile.readlines():
+    with open(filePath) as file:
+        for line in file.readlines():
             if line.find("-=informationSplitter=-") != -1:
-                information.append(curInformation.replace("\n", ""))
-                informationHeaders.append(curHeader.replace("\n", ""))
-                curInformation = ""
-                curHeader = ""
+                for c in tempContent:
+                    content.append([header, c])
+                tempContent = []
+                header = ""
             elif line.find("-=informationStart=-") != -1:
-                curHeader = line[20:]
+                header = line[20:].replace('\n', '')
             else:
-                curInformation += line
-        if curInformation != '':
-            information.append(curInformation.replace("\n", ""))
-            informationHeaders.append(curHeader.replace("\n", ""))
-    for header in informationHeaders:
-        memDB.newDBEntry(type="information", identifier=header,
-                         content=information[informationHeaders.index(header)])
+                tempContent.append(line.replace('\n', ''))
+
+    i = 0
+    for information in content:
+        memDB.newDBEntry(type="information", identifier=f"{information[0]}{i}",
+                         content=information[1])
+        i += 1
 
 def initSwearWords(filePath: str, filePathExclusions: str = None):
     with open(filePath) as swearWords:
@@ -84,4 +83,4 @@ def initSwearWords(filePath: str, filePathExclusions: str = None):
 initSysPrompts(filePath="insert path to system prompts")
 initPersonalityPrompts(filePath="insert path to personality prompts")
 initInformationMemory(filePath="insert path to information file")
-initSwearWords(filePath="insert path to swear word file")
+initSwearWords(filePath="insert path to swear word file")initSysPrompts(filePath="../memories/systemPrompts.txt")

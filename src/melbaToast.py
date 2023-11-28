@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from nrclex import NRCLex
 from typing import List
+import time
 import math
 import json
 
@@ -79,17 +80,17 @@ class Melba:
         context = self.context.situationalContext(person=person, message=message)
         pastconversation = self.memory.savedChat(username=person)
         self.convoStyle = self.llm.promptTemplate(inputText=message)
-        finalPrompt = (f"{self.llm.systemPromptPrefix} {systemprompt.replace('[personality]', personality)}\n"
-                       f"{context}"
-                       f"{self.llm.systemPromptSplitter}\n"
-                       f"{pastconversation}\n" + self.convoStyle)
 
-        finalPrompt = finalPrompt.replace("{llmName}", self.llmConfig.modelName)
+        finalPrompt = (f"{self.llm.systemPromptPrefix} {systemprompt.replace('[personality]', personality)}\n"
+                       f"{self.llm.systemPromptSplitter}\n"
+                       f"{pastconversation}\n" + self.convoStyle
+                       ).replace("[context]", context).replace("{llmName}", self.llmConfig.modelName)
+
         return finalPrompt
 
-    def getMelbaResponse(self, message, person, stream=False) -> str:
+    def getMelbaResponse(self, message: str, person: str, stream=False) -> str:
         self.curPrompt = self.prompt(person=person, message=message)        # insert model specific tokens
-        if self.curPrompt == "":
+        if self.curPrompt == "" or message[0] == '@':
             return json.dumps({'response': "", 'emotions' : ['neutral']})
         self.llm.loadPrompt(path=None, prompt=self.curPrompt, type=self.llmConfig.modelType)
 
@@ -154,9 +155,9 @@ class Memory:
                                 f"with identifier '{identifier}' and content '{newContent}'")
 
     def saveConversation(self, person: str, conversation: str):
-        lines = conversation.count("<|im")  # TODO: change to more accurate way of measuring message count
-        if lines > 8:
-            lines = '\n'.join(conversation.split('\n')[5:])
+        lines = conversation.count("<|im_start|>")  # TODO: change to more accurate way of measuring message count
+        if lines > 4:
+            lines = '\n'.join(conversation.split('\n')[4:])
         else:
             lines = conversation
         self.updateMemory(type="savedChat", identifier=person, newContent=f"{lines}")
@@ -175,13 +176,24 @@ class Context:
         return ["placeholder"]
 
     def situationalContext(self, person: str, message: str) -> str:
-        # stage 2(?) should enable a llm summarizing and formatting the message into a useful query for the vectordb
-        vectorstorageresponse = self.memoryDB.vectorQueryDB(queries=[message], filter=None, nResults=2)
-        # stage 2 should summarize the results into something usable           - needs to be filtered
-        if vectorstorageresponse == "":
-            webResponse = self.returnWebContent(searchQuery=message) # searchQuery will be extracted keywords
-        return ""
+        vectorstorageresponse = self.memoryDB.vectorQueryDB(queries=[message], filter="information", nResults=2)
+        context = []
+        print(vectorstorageresponse)
 
+        index = 0
+        print(f"Len: {len(vectorstorageresponse['ids'][0])}")
+        for i in range(len(vectorstorageresponse['ids'][0])):
+            if vectorstorageresponse['distances'][0][index] > 0.5:
+                print(f"distance: {vectorstorageresponse['distances'][0][index]}")
+                context.append(vectorstorageresponse['documents'][0][index])
+            index += 1
+        formattedcontext = ""
+        for c in context:
+            formattedcontext += f"{c}\n"
+        formattedcontext += f"Current date: {datetime.today().strftime('%d/%m/%Y')}\n" \
+                            f"Current time: {datetime.now().strftime('%H:%M')}\n"
+        print(f"melbaToast: Formatted context: {formattedcontext}")
+        return formattedcontext
 
 class EmotionHandler:
     def __init__(self):
@@ -221,6 +233,22 @@ class MelbaTools:
 
         return charfreq
 
+    def wordFrequency(self, sentence: str) -> List[StrIntPair]:
+        wordfreq: List[StrIntPair] = []
+
+        for word in sentence.split(' '):
+            exists = False
+
+            for pair in wordfreq:
+                if pair.string == word:
+                    pair.integer += 1
+                    exists = True
+            if not exists:
+                pair = StrIntPair(word, 1)
+                wordfreq.append(pair)
+
+        return wordfreq
+
     def characterProbability(self, frequencies: List[StrIntPair], target: str):  # this function should likely be
         targetindex = 0                                                          # swapped out for something more
         wordsum = 0                                                              # accurate and performant
@@ -234,7 +262,7 @@ class MelbaTools:
         return frequencies[targetindex].integer/wordsum
 
     def sentenceEntropy(self, sentence: str):
-        frequencies: List[StrIntPair] = self.characterFrequency(sentence=sentence)
+        frequencies: List[StrIntPair] = self.wordFrequency(sentence=sentence)
         entropy = 0.0
 
         for field in frequencies:
@@ -245,8 +273,9 @@ class MelbaTools:
 
     def isSwearWord(self, word: str) -> bool:
         if self.swearWords == "":
-            self.swearWords = (self.memoryDB.metadataQueryDB(type="swearwords", identifier="all")).split()
-        if word.replace('\n', '') in self.swearWords:
+            swearWords = (self.memoryDB.metadataQueryDB(type="swearwords", identifier="all")).split()
+            self.swearWords = (word.replace(' ', '') for word in swearWords)
+        if word.replace('\n', '').replace(' ', '') in self.swearWords:
             return True
         return False
 
@@ -274,8 +303,9 @@ class MelbaTools:
         return ' '.join(filteredmessage)
 
     def preprocessMessage(self, message: str) -> str:
-        if self.sentenceEntropy(sentence=message) > 3.0 and \
+        if self.sentenceEntropy(sentence=message) > 1.5 and \
                 self.maliciousWordsCount(words=message.split()) <= 0:
+            print(self.sentenceEntropy(sentence=message))
             return message
         return ""
         # stage 1 will include a llm preprocessing this message and further deciding whether it is valid for
@@ -298,3 +328,4 @@ class Logger:
                     print(message)
             except:
                 FileExistsError("File does not exist.")
+
