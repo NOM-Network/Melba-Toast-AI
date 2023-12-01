@@ -28,7 +28,6 @@ def initPersonalityPrompts(filePath: str):
 
     with open(filePath) as personalitiesFile:
         for line in personalitiesFile.readlines():
-            #print(line)
             if line.find("-=personalitySplitter=-") != -1:
                 print(curPersonality)
                 print(curIdentifier)
@@ -38,7 +37,6 @@ def initPersonalityPrompts(filePath: str):
                 curIdentifier = ""
             elif line.find("-=personalityStart=-") != -1:
                 curIdentifier = line[20:]
-                #print(curIdentifier)
             else:
                 curPersonality += line
         if curPersonality != '':
@@ -50,28 +48,27 @@ def initPersonalityPrompts(filePath: str):
                              content=personality)
 
 def initInformationMemory(filePath: str):
-    information: List[str] = []
-    informationHeaders: List[str] = []
-    curInformation = ""
-    curHeader = ""
+    content = []
+    header = ""
+    tempContent = []
 
-    with open(filePath) as informationFile:
-        for line in informationFile.readlines():
+    with open(filePath) as file:
+        for line in file.readlines():
             if line.find("-=informationSplitter=-") != -1:
-                information.append(curInformation.replace("\n", ""))
-                informationHeaders.append(curHeader.replace("\n", ""))
-                curInformation = ""
-                curHeader = ""
+                for c in tempContent:
+                    content.append([header, c])
+                tempContent = []
+                header = ""
             elif line.find("-=informationStart=-") != -1:
-                curHeader = line[20:]
+                header = line[20:].replace('\n', '')
             else:
-                curInformation += line
-        if curInformation != '':
-            information.append(curInformation.replace("\n", ""))
-            informationHeaders.append(curHeader.replace("\n", ""))
-    for header in informationHeaders:
-        memDB.newDBEntry(type="information", identifier=header,
-                         content=information[informationHeaders.index(header)])
+                tempContent.append(line.replace('\n', ''))
+
+    i = 0
+    for information in content:
+        memDB.newDBEntry(type="information", identifier=f"{information[0]}{i}",
+                         content=information[1])
+        i += 1
 
 def initSwearWords(filePath: str, filePathExclusions: str = None):
     with open(filePath) as swearWords:
@@ -86,4 +83,4 @@ def initSwearWords(filePath: str, filePathExclusions: str = None):
 initSysPrompts(filePath="memories/systemPrompts.txt")
 initPersonalityPrompts(filePath="memories/personalities.txt")
 initCharacterMemory(filePath="memories/characterInformation.txt")
-initSwearWords(filePath="memories/bannedWords.txt")
+initSwearWords(filePath="memories/bannedWords.txt")initSysPrompts(filePath="../memories/systemPrompts.txt")

@@ -1,11 +1,15 @@
+import ctypes
+
 import LLMUtils
-import llama_cpp
-from llama_cpp import Llama
+from llama_cpp import llama_cpp
+from llama_cpp import llava_cpp
 import numpy as np
 import numpy.typing as npt
 from typing import List
 from time import time
 from random import randint
+from urllib import request
+import array
 
 class LlamaModel:
     def __init__(self, parameters: LLMUtils.LLMConfig):
@@ -24,7 +28,6 @@ class LlamaModel:
         self.modelParams.n_gpu_layers = self.parameters.nOffloadLayer
         self.modelParams.main_gpu = self.parameters.mainGPU
         self.modelPath = self.parameters.modelPath
-        print(str(self.modelParams.n_gpu_layers) + " " + str(self.modelParams.main_gpu))
 
         if self.modelPath is not None:
             try:
@@ -61,7 +64,7 @@ class LlamaModel:
         )
 
         self.pCandidates = candidates
-        self.EOSToken = llama_cpp.llama_token_eos(self.context)
+        self.EOSToken = 32000# llama_cpp.llama_token_eos(self.context)
         self.pCandidatesDataId = np.arange(self.nVocab, dtype=np.intc)
         self.pCandidatesDataP = np.zeros(self.nVocab, dtype=np.single)
         self.pastTokens = 0
@@ -88,17 +91,14 @@ class LlamaModel:
                                              n_max_tokens=self.nCtx,
                                              add_bos=bos,
                                              special=special)
-        #print(len(input.encode("utf8")))
-        print(f"LLMCore: {newTokens} token(s) were tokenized.")
         return list(tokens[:newTokens])
 
-    def evaluate(self, tokens: List[int], batch: int):
+    def evaluate(self, tokens: List[int], batch: int = 1):
         if batch > 0:
             for i in range(0, len(tokens), batch):
                 nBatch = tokens[i : min(len(tokens), i + batch)]
                 nPast = min(self.nCtx - len(nBatch), len(self.inputIds[: self.pastTokens]))
                 nTokens = len(nBatch)
-
                 evalCode = llama_cpp.llama_eval(ctx=self.context,
                                                 tokens=(llama_cpp.llama_token * len(nBatch))(*nBatch),
                                                 n_tokens=nTokens,
@@ -114,7 +114,6 @@ class LlamaModel:
                 offset = (0 if self.parameters.logitsAll else nTokens-1)
                 self.scores[self.pastTokens+offset:self.pastTokens+nTokens, :].reshape(-1)[:] \
                     = llama_cpp.llama_get_logits(self.context)[: rows * cols]
-                #print(f"pastTokens: {self.pastTokens} Tokens: {self.inputIds[self.pastTokens : self.pastTokens + nTokens]} String: {self.tokensToString(self.inputIds[self.pastTokens : self.pastTokens + nTokens])}") useful for debugging
                 self.pastTokens += nTokens
 
     def sampleTokenWithModel(self):
@@ -126,7 +125,8 @@ class LlamaModel:
         lastNTokensData = (llama_cpp.llama_token * lastNTokensSize)(*lastNTokensData)
 
         logits: npt.NDArray[np.single] = self.scores[: self.pastTokens, :][-1, :]
-
+        for token, bias in self.parameters.logit_bias.items():
+            logits[token] = logits[token] * bias
         candidates = self.pCandidates
         candidatesData = self.pCandidatesData
         candidatesData["id"][:] = self.pCandidatesDataId
@@ -197,11 +197,10 @@ class LlamaModel:
     def generateTokens(self, tokens: List[int]):
         nTokens = 0
         while True:
-            self.evaluate(tokens=tokens, batch=32)
+            self.evaluate(tokens=tokens, batch=64)
             newToken = self.sampleTokenWithModel()
             tokensON = yield newToken
             tokens = [newToken]
-            #print(f"LLMCore: generateTokens: new token: {newToken}")
             if tokensON:
                 tokens.extend(tokensON)
 
@@ -223,12 +222,13 @@ class LlamaModel:
 
     def generate(self, stream: bool = False) -> str:   # streaming disabled for now
         antiPrompts: List[str] = self.parameters.antiPrompt
+        exitTokens: List[int] = [32002, 32001]
         tempBytes = b""
         finalString = ""
         tokens: List[int] = []
         tokenizedPromptTokens: List[int] = (self.tokenizeFull(self.parameters.prompt) if self.parameters.prompt != ""
                                             else [llama_cpp.llama_token_bos(self.context)])
-
+        
         if len(tokenizedPromptTokens) >= self.parameters.nCtx:
             print(f"{tokenizedPromptTokens} tokens were requested to be processed, maximum is "
                   f"{llama_cpp.llama_n_ctx(self.context)}")
@@ -242,20 +242,16 @@ class LlamaModel:
 
         incompleteFix: int = 0
         for t in self.generateTokens(tokens=tokenizedPromptTokens):  # should probably remove either tempbytes or
-            if t == self.EOSToken:                                   # finalstring
+            if t == self.EOSToken or t in exitTokens:                # finalstring
                 finalString = self.tokensToString(tokens=tokens) if len(finalString)+1 != len(tokens) else finalString
-                #if len(tokens) <= 1:
-                #    continue
                 break
             tokens.append(t)
-            #tokens.append(1)
             tempBytes += self.tokenToByte(token=tokens[-1])
 
             for k, char in enumerate(tempBytes[-3:]):
                 k = 3 - k
                 for number, pattern in [(2, 192), (3, 224), (4, 240)]:
                     if number > k and pattern & char == pattern:
-                        print(str(number) + " " + str(pattern))
                         incompleteFix = number - k
 
             if incompleteFix > 0:
@@ -301,7 +297,6 @@ class LlamaModel:
             print("LLMCore: No prompt loaded.")
 
         self._promptTemplate = ""
-        #TODO: fix prompt types, currently mistral has the sole working prompt style
         if type.lower() == "alpaca":
             self.systemPromptPrefix = ""
             self.inputPrefix = "### Instruction:"
@@ -344,11 +339,7 @@ class LlamaModel:
 
     def promptTemplate(self, inputText: str):
         prompt = self._promptTemplate.replace("[inputText]", inputText)
-        print("Input text:" + inputText)
         return prompt
-
-    def manipulatePrompt(self, new, setting):
-        pass    # add some functionality to mess with the prompt during runtime
 
     def printPrompt(self):
         if self.parameters.prompt:
@@ -358,82 +349,102 @@ class LlamaModel:
         llama_cpp.llama_print_timings(self.context)
         llama_cpp.llama_free(self.context)
 
-class LlamaOrig:
-    def __init__(self, params):
-        self.parameters = params
-        self.llama = Llama(model_path=self.parameters.modelPath,
-                           main_gpu=self.parameters.mainGPU,
-                           n_gpu_layers=-1,
-                           n_ctx=1024,
-                           seed=int(randint(0, int(time()))),
-                           n_threads=16)
+class LlamaLlavaModel:
+    def __init__(self, llamaModel = None, modelPath: str = None, parameters: LLMUtils.LLMConfig = None):
+        if llamaModel is None:
+            self.warnAndExit(function="__init__", errorMessage="No Llama model provided.")
+        if modelPath is None:
+            self.warnAndExit(function="__init__", errorMessage="No model path provided.")
 
-    def response(self, stream=False): # placeholder argument
-        res = str(self.llama(self.parameters.prompt, max_tokens=self.parameters.n_predict,
-                              mirostat_mode=2,
-                              presence_penalty=self.parameters.presence_penalty,
-                              frequency_penalty=self.parameters.frequency_penalty,
-                              mirostat_eta=self.parameters.mirostat_eta,
-                              mirostat_tau=self.parameters.mirostat_tau,
-                              repeat_penalty=self.parameters.repeat_penalty,
-                              temperature=self.parameters.temperature,
-                              top_k=self.parameters.top_k,
-                              top_p=self.parameters.top_p,
-                              stop=self.parameters.antiPrompt))
-
-        textOutputStart = res.find("'text':") + 9
-        textOutputEnd = res.find("index") - 4
-        textOutput = res[textOutputStart:textOutputEnd]
-        print(textOutput)
-        return textOutput
-
-    def loadPrompt(self, path: str = None, prompt: str = None, type: str = None):
-        supportedPromptTypes = ['alpaca', 'pygmalion', 'pygmalion2', 'zephyr', 'openhermes-mistral']
-
-        if path is not None:
-            with open(path) as f:
-                self.parameters.prompt = (" " + (f.read()).replace("{llmName}", self.parameters.modelName))
-                self.parameters.prompt.replace("\\n", '\n')
-
-            if type.lower() not in supportedPromptTypes:
-                print(f"Prompt type not supported. Prompt type: {type.lower()}")
-                self.global_go = False
-                pass
-        elif prompt is not None:
-            self.parameters.prompt = prompt
+        if parameters is None:
+            self.parameters = LLMUtils.LLMConfig()
         else:
-            print("LLMCore: No prompt loaded.")
+            self.parameters = parameters
 
-        #TODO: fix prompt types, currently mistral has the sole working prompt style
-        if type.lower() == "alpaca":
-            self.systemPromptPrefix = ""
-            self.inputPrefix = "### Instruction:"
-            self.outputPrefix = "### Response:"
-        elif type.lower() == "pygmalion":
-            self.systemPromptPrefix = "{llmName}}'s Persona:"
-            self.systemPromptSplitter = "<START>"
-            self.inputPrefix = "You:"
-            self.outputPrefix = ('[' + self.parameters.modelName + ']' + ':' + ' ')
-            self.parameters.prompt.replace("PYGMALION", " ")
-        elif type.lower() == "pygmalion2":
-            self.systemPromptPrefix = ""
-            self.inputPrefix = "<|user|>"
-            self.outputPrefix = "<|model|>"
-            self.parameters.prompt.replace("PYGMALION2", "")
-        elif type.lower() == "zephyr":
-            self.systemPromptPrefix = ""
-            self.inputPrefix = "</s><|user|>"
-            self.outputPrefix = "</s><|assistant|>"
-        elif type.lower() == "openhermes-mistral":
-            self.systemPromptSplitter = "<|im_end|>"
-            self.systemPromptPrefix = "<|im_start|>system"
-            self.inputPrefix = "<|im_start|>"
-            self.inputPostfix = "<|im_end|>"
+        self.model = llamaModel
+        self.context = llava_cpp.clip_model_load(fname=modelPath.encode(), verbosity=1)
+        self.image = None
 
-    def promptTemplate(self):
-        template = f"{self.inputPrefix}[inputName]:\n[inputText]{self.inputPostfix}\n"
-        template += f"{self.inputPrefix}[outputName]:\n"
-        return template
+    def getImage(self, image: str):
+        imagedata = request.urlopen(url=image).read()
+        if imagedata != self.image:
+            self.image = imagedata
 
-    def reset(self):
-        pass # placeholder
+    def embedImage(self, imageurl: str):
+        if imageurl is None and self.image is None:
+            self.warnAndExit(function="embedImage", errorMessage="No image URL provided.")
+        self.getImage(image=imageurl)
+
+        data = array.array("B", self.image)
+        dataptr = (ctypes.c_ubyte * len(data)).from_buffer(data)
+        self.embedding = llava_cpp.llava_image_embed_make_with_bytes(ctx_clip=self.context,
+                                                                n_threads=self.parameters.threads,
+                                                                image_bytes=dataptr,
+                                                                image_bytes_length=len(self.image))
+
+    def evalEmbedding(self):
+        nPast = ctypes.c_int(self.model.pastTokens)
+        nPastPtr = ctypes.pointer(nPast)
+
+        llava_cpp.llava_eval_image_embed(ctx_llama=self.model.context,
+                                         embed=self.embedding,
+                                         n_batch=32,
+                                         n_past=nPastPtr)
+        self.model.pastTokens = nPast.value
+
+        llava_cpp.llava_image_embed_free(embed=self.embedding)
+
+    def response(self, systemprompt: str = None, prompt: str = None, imageurl: str = None):
+        defaultsystemprompt = "A chat between a helpful assistant that thinks logically and a user.\n"
+        defaultuserprompt = "USER: Give a brief explanation for this image"
+        promptTokens = self.model.tokenizeFull(input=systemprompt,
+                                               bos=True,
+                                               special=False)
+        self.model.evaluate(tokens=promptTokens, batch=self.parameters.n_batch)
+
+        self.embedImage(imageurl=imageurl)
+        self.evalEmbedding()
+
+        inputTokens = self.model.tokenizeFull(input=prompt,
+                                              bos=False,
+                                              special=False)
+        self.model.evaluate(tokens=inputTokens, batch=self.parameters.n_batch)
+
+        exitTokens: List[int] = [2, 32002, 32001]
+        generatedTokens: List[int] = []
+        tempBytes = b""
+        tokens = []
+
+        # llama_cpp.llama_reset_timings(self.context) broken
+
+        incompleteFix: int = 0
+        for t in self.model.generateTokens(tokens=tokens):
+            if t == self.model.EOSToken or t in exitTokens:
+                print(t)
+                break
+
+            tokens.append(t)
+            generatedTokens.append(t)
+            tempBytes += self.model.tokenToByte(token=generatedTokens[-1])
+
+            for k, char in enumerate(tempBytes[-3:]):
+                k = 3 - k
+                for number, pattern in [(2, 192), (3, 224), (4, 240)]:
+                    if number > k and pattern & char == pattern:
+                        incompleteFix = number - k
+
+            if incompleteFix > 0:
+                incompleteFix -= 1
+                continue
+
+            if len(generatedTokens) > self.parameters.n_predict:
+                break
+
+        finalString = self.model.tokensToString(tokens=generatedTokens)
+        # llama_cpp.llama_print_timings(self.context) broken
+        print(f"Final {generatedTokens} - Tokens {tokens} - tempBytes {tempBytes}")
+        return finalString if finalString != "" else tempBytes.decode("utf-8", errors="ignore")
+
+
+    def warnAndExit(self, function, errorMessage):
+        raise RuntimeError(f"LLMCore: Error in function: '{function}'. Following error message was provided: '{errorMessage}'\n")
